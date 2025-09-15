@@ -1,3 +1,3 @@
-refiner/refiner_fvMeshTopoChanger.C
+refiner/myrefiner_fvMeshTopoChanger.C
 
-LIB = $(FOAM_LIBBIN)/libfvMeshTopoChangers
+LIB = $(FOAM_USER_LIBBIN)/libmyfvMeshTopoChangers

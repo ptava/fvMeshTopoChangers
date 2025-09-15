@@ -22,7 +22,7 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::fvMeshTopoChangers::refiner
+    Foam::fvMeshTopoChangers::myrefiner
 
 Description
     Dynamic mesh refinement/unrefinement based on volScalarField values.
@@ -35,7 +35,7 @@ Usage
     \verbatim
     topoChanger
     {
-        type            refiner;
+        type            myrefiner;
 
         libs            ("libfvMeshTopoChangers.so");
 
@@ -79,7 +79,7 @@ Usage
     \verbatim
     topoChanger
     {
-        type            refiner;
+        type            myrefiner;
 
         // How often to refine
         refineInterval  1;
@@ -150,17 +150,20 @@ Usage
 
 
 SourceFiles
-    refiner_fvMeshTopoChanger.C
+    myrefiner_fvMeshTopoChanger.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef refiner_fvMeshTopoChanger_H
-#define refiner_fvMeshTopoChanger_H
+#ifndef myrefiner_fvMeshTopoChanger_H
+#define myrefiner_fvMeshTopoChanger_H
 
 #include "fvMeshTopoChanger.H"
 #include "hexRef8.H"
 #include "PackedBoolList.H"
 #include "Switch.H"
+#include "SortableList.H"
+#include "Function1.H"
+#include "labelIOList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -170,10 +173,10 @@ namespace fvMeshTopoChangers
 {
 
 /*---------------------------------------------------------------------------*\
-                 Class fvMeshTopoChangers::refiner Declaration
+                 Class fvMeshTopoChangers::myrefiner Declaration
 \*---------------------------------------------------------------------------*/
 
-class refiner
+class myrefiner
 :
     public fvMeshTopoChanger
 {
@@ -194,6 +197,10 @@ class refiner
         //- Dump cellLevel for postprocessing
         Switch dumpLevel_;
 
+        //- Dump processing info (number of selectable cells, maximum/minimum
+        //  "cellError", number of selected cells
+        bool dumpRefinementInfo_;
+
         //- Fluxes to map
         HashTable<word> correctFluxes_;
 
@@ -210,8 +217,55 @@ class refiner
         //- The time index used for updating
         label timeIndex_;
 
+        //- List of cells selected for refinement (after 2:1 consistency)
+        mutable autoPtr<labelIOList> refinedCells_;
+
+        //- List of cells selected for unrefinement (after 2:1 consistency)
+        mutable autoPtr<labelIOList> unrefinedCells_;
+
+        //- cellError before smoothing
+        mutable autoPtr<volScalarField> cellError_;
+
+        //- cellError after smoothing
+        mutable autoPtr<volScalarField> expectedCellError_;
+
+        //- Scale function for cells refinement (e.g., for startup)
+        mutable autoPtr<Function1<scalar>> refineScale_;
 
     // Private Member Functions
+
+        //- Initialise fields for dumping refinement information (matching
+        //  current mesh size before overwrite)
+        void makeDumpField
+        (
+            autoPtr<volScalarField>& fld,
+            const word& name
+        ) const;
+
+        //- Setters: assign computed values
+        template<autoPtr<volScalarField> fvMeshTopoChangers::myrefiner::* MemberPtr>
+        inline void setDumpField
+        (
+            const scalarField& vals,
+            const word& name
+        ) const;
+
+        template<class T>
+        inline void setInfo
+        (
+            const word& name,
+            const T& value
+        ) const;
+
+        template<autoPtr<labelIOList> fvMeshTopoChangers::myrefiner::* MemberPtr>
+        inline void setDumpList
+        (
+            const labelList& vals,
+            const word& name
+        ) const;
+
+        // Current scale value
+        scalar currentScale() const;
 
         //- Count set/unset elements in packedlist.
         static label count(const PackedBoolList&, const unsigned int);
@@ -288,7 +342,8 @@ class refiner
                 const scalar lowerRefineLevel,
                 const scalar upperRefineLevel,
                 const scalar maxRefinement,
-                const scalarField& vFld
+                const scalarField& vFld,
+                SortableList<scalar>& allCellError
             ) const;
 
             //- Select candidate cells for refinement
@@ -299,6 +354,7 @@ class refiner
                 const scalar upperRefineLevel,
                 const scalar maxRefinement,
                 const scalarField& vFld,
+                SortableList<scalar>& allCellError,
                 const labelList& cells
             ) const;
 
@@ -306,7 +362,8 @@ class refiner
             virtual scalar selectRefineCandidates
             (
                 PackedBoolList& candidateCell,
-                const dictionary& refineDict
+                const dictionary& refineDict,
+                SortableList<scalar>& allCellError
             ) const;
 
             //- Subset candidate cells for refinement
@@ -314,13 +371,16 @@ class refiner
             (
                 const label maxCells,
                 const label maxRefinement,
-                const PackedBoolList& candidateCell
+                const PackedBoolList& candidateCell,
+                const SortableList<scalar>& allCellError,
+                const scalar& scale
             ) const;
 
             //- Select points that can be unrefined.
             virtual labelList selectUnrefinePoints
             (
-                const PackedBoolList& markedCell
+                const PackedBoolList& markedCell,
+                const dictionary& refineDict
             ) const;
 
             //- Extend markedCell with cell-face-cell.
@@ -337,20 +397,20 @@ class refiner
 public:
 
     //- Runtime type information
-    TypeName("refiner");
+    TypeName("myrefiner");
 
 
     // Constructors
 
         //- Construct from fvMesh and dictionary
-        refiner(fvMesh& mesh, const dictionary& dict);
+        myrefiner(fvMesh& mesh, const dictionary& dict);
 
         //- Disallow default bitwise copy construction
-        refiner(const refiner&) = delete;
+        myrefiner(const myrefiner&) = delete;
 
 
     //- Destructor
-    virtual ~refiner();
+    virtual ~myrefiner();
 
 
     // Member Functions
@@ -395,7 +455,7 @@ public:
     // Member Operators
 
         //- Disallow default bitwise assignment
-        void operator=(const refiner&) = delete;
+        void operator=(const myrefiner&) = delete;
 };
 
 
@@ -403,6 +463,11 @@ public:
 
 } // End namespace fvMeshTopoChangers
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+#ifdef NoRepository
+    #include "myrefiner_fvMeshTopoChangerTemplates.C"
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
