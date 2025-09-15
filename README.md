@@ -15,7 +15,9 @@ Working on adaptive mesh refinement in OpenFOAM.
 
 ### Note: differences between `dynamicRefineFvMesh` and the new `refiner`
 
-The field value used to mark cells for refinement isn't processed the same way as in the original `dynamicRefineFvMesh` class. No smoothing applied as mentioned in [esi-version](https://github.com/ptava/dynamicFvMesh.git). 
+- The field value used to mark cells for refinement isn't processed the same way as in the original `dynamicRefineFvMesh` class. No smoothing applied as mentioned in [esi-version](https://github.com/ptava/dynamicFvMesh.git). 
+
+- `cellZone` definition for refinement/unrefinement operations is supported.
 
 ---
 
