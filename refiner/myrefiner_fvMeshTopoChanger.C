@@ -307,7 +307,6 @@ void Foam::fvMeshTopoChangers::myrefiner::readDict()
     if (dumpRefinementInfo_)
     {
         makeDumpField(cellError_, "cellError");
-        makeDumpField(expectedCellError_, "expectedCellError");
     }
 }
 
@@ -933,25 +932,10 @@ void Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
     // Store into registry
     if (dumpRefinementInfo_)
     {
-        scalarField expectedCellError
-        (
-            error
-            (
-                vFld,
-                lowerRefineLevel,
-                upperRefineLevel
-            )
-        );
-
         setDumpField<&myrefiner::cellError_>
         (
             cellError,
             "cellError"
-        );
-        setDumpField<&myrefiner::expectedCellError_>
-        (
-            expectedCellError,
-            "expectedCellError"
         );
     }
 
@@ -1005,25 +989,10 @@ void Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
     // Store into registry
     if (dumpRefinementInfo_)
     {
-        scalarField expectedCellError
-        (
-            error
-            (
-                vFld,
-                lowerRefineLevel,
-                upperRefineLevel
-            )
-        );
-
         setDumpField<&myrefiner::cellError_>
         (
             cellError,
             "cellError"
-        );
-        setDumpField<&myrefiner::expectedCellError_>
-        (
-            expectedCellError,
-            "expectedCellError"
         );
     }
 
@@ -1953,7 +1922,7 @@ bool Foam::fvMeshTopoChangers::myrefiner::write(const bool write) const
 
         if (dumpRefinementInfo_)
         {
-            writeOk = writeOk && cellError_->write() && expectedCellError_->write();
+            writeOk = writeOk && cellError_->write();
         }
 
         return writeOk;

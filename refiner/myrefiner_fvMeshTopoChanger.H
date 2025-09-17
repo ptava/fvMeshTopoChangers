@@ -225,10 +225,6 @@ class myrefiner
 
         //- cellError before smoothing
         mutable autoPtr<volScalarField> cellError_;
-
-        //- cellError after smoothing
-        mutable autoPtr<volScalarField> expectedCellError_;
-
         //- Scale function for cells refinement (e.g., for startup)
         mutable autoPtr<Function1<scalar>> refineScale_;
 
