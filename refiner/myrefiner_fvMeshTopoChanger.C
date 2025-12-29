@@ -943,7 +943,7 @@ void Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
     // Mark cells that are candidates for refinement.
     forAll(cellError, celli)
     {
-        if (cellError[celli] > 0)
+        if (cellError[celli] >= 0)
         {
             candidateCells.set(celli, 1);
         }
