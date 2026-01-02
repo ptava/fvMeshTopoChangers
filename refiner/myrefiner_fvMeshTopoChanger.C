@@ -1280,7 +1280,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
                 break;
             }
 
-            if (vfld[celli] >= unrefineLevel)
+            if (vFld[celli] >= unrefineLevel)
             {
                 belowLevel = false;
                 break;
