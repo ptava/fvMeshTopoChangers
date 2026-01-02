@@ -842,27 +842,6 @@ const Foam::cellZone& Foam::fvMeshTopoChangers::myrefiner::findCellZone
 }
 
 
-Foam::scalarField
-Foam::fvMeshTopoChangers::myrefiner::cellToPoint(const scalarField& vFld) const
-{
-    scalarField pFld(mesh().nPoints());
-
-    forAll(mesh().pointCells(), pointi)
-    {
-        const labelList& pCells = mesh().pointCells()[pointi];
-
-        scalar sum = 0.0;
-        forAll(pCells, i)
-        {
-            sum += vFld[pCells[i]];
-        }
-        pFld[pointi] = sum/pCells.size();
-    }
-
-    return pFld;
-}
-
-
 Foam::scalarField Foam::fvMeshTopoChangers::myrefiner::error
 (
     const scalarField& fld,
@@ -1276,8 +1255,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
         (
             refineDict.lookup("field")
         );
-    const scalarField pFld = cellToPoint(vFld);
-
+    //
     // All points that can be unrefined
     const labelList splitPoints(meshCutter_.getSplitPoints());
 
@@ -1291,17 +1269,25 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
         const labelList& pCells = mesh().pointCells()[pointi];
 
         bool hasMarked = false;
+        bool belowLevel = true;
 
         forAll(pCells, pCelli)
         {
-            if (markedCell.get(pCells[pCelli]))
+            const label celli = pCells[pCelli];
+            if (markedCell.get(celli))
             {
                 hasMarked = true;
                 break;
             }
+
+            if (vfld[celli] >= unrefineLevel)
+            {
+                belowLevel = false;
+                break;
+            }
         }
 
-        if (!hasMarked && pFld[pointi] < unrefineLevel)
+        if (!hasMarked && belowLevel)
         {
             newSplitPoints.append(pointi);
         }
