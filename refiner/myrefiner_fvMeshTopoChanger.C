@@ -466,17 +466,17 @@ Foam::fvMeshTopoChangers::myrefiner::unrefine
     // Info of unrefinement operation
     const label nCellsBefore = returnReduce(map().nOldCells(), sumOp<label>());
     const label nCellsAfter = mesh().globalData().nTotalCells();
+    const label nUnrefinedCells = nCellsBefore - nCellsAfter;
 
     Info<< "Unrefined from " << nCellsBefore
         << " to " << nCellsAfter << " cells." << endl;
-
-    const label nUnrefinedCells = nCellsBefore - nCellsAfter;
 
     DebugInfo<< "Unrefined cells: " << nUnrefinedCells << endl;
 
     if (dumpRefinementInfo_)
     {
         setInfo("nTotUnrefined", nUnrefinedCells);
+        setInfo("nCells", nCellsAfter);
 
         // Store the identifiers of cells removed by unrefinement
         const labelList& reverseCellMap = map().reverseCellMap();
@@ -1111,14 +1111,11 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
     {
         forAll(candidateCells, celli)
         {
-            if
-            (
-                candidateCells.get(celli)
-             && (
-                    unrefineableCells.empty()
-                 || !unrefineableCells.get(celli)
-                )
-            )
+            const bool isCandidate = candidateCells.get(celli);
+            const bool isProtected =
+                !unrefineableCells.empty()
+             || unrefineableCells.get(celli);
+            if ( isCandidate && !isProtected )
             {
                 candidates.append(celli);
             }
@@ -1127,7 +1124,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
     else
     {
         // Sort by error
-        if(Pstream::parRun())
+        if (Pstream::parRun())
         {
             globalIndex globalNumbering(mesh().nCells());
             
@@ -1138,12 +1135,12 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
 				if (proci == Pstream::myProcNo())
                 {
                     label celli = globalNumbering.toLocal(index);
+                    const bool isCandidate = candidateCells.get(celli);
+                    const bool canRefine =
+                        !unrefineableCells.get(celli)
+                     && cellLevel[celli] < maxRefinement;
 
-                    if
-                    (
-                        (!unrefineableCells.get(celli))
-                     && cellLevel[celli] < maxRefinement
-                    )
+                    if (isCandidate && canRefine)
                     {
                         candidates.append(celli);
                     }
@@ -1159,12 +1156,12 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
             for(label i = 0; i< nTotToRefine; ++i)
             {
                 const label& celli = allCellError.indices()[i];
+                const bool isCandidate = candidateCells.get(celli);
+                const bool canRefine =
+                    !unrefineableCells.get(celli)
+                 && cellLevel[celli] < maxRefinement;
 
-                if
-                (
-                    (!unrefineableCells.get(celli))
-                 && cellLevel[celli] < maxRefinement
-                )
+                if (isCandidate && canRefine)
                 {
                     candidates.append(celli);
                 }
