@@ -1080,12 +1080,8 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
 ) const
 {
     // Every refined cell causes 7 extra cells
-    label nTotToRefine = (maxCells - mesh().globalData().nTotalCells())/7;
-
-    if (dumpRefinementInfo_)
-    {
-        setInfo("nTotToRefine", nTotToRefine);
-    }
+    const label availableCells = maxCells - mesh().globalData().nTotalCells();
+    label nTotToRefine = availableCells/7;
 
     if (nTotToRefine <= 0)
     {
@@ -1103,6 +1099,15 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
     // Count current selection
     const label nLocalCandidates = count(candidateCells, 1);
     const label nCandidates = returnReduce(nLocalCandidates, sumOp<label>());
+    const label nLocalUnrefineable = count(unrefineableCells, 1);
+    const label nUnrefineable = returnReduce(nLocalUnrefineable, sumOp<label>());
+
+    if (dumpRefinementInfo_)
+    {
+        setInfo("nTotToRefine", nTotToRefine);
+        setInfo("nCandidates", nCandidates);
+        setInfo("nUnrefineable", nUnrefineable);
+    }
 
     // Collect all cells
     DynamicList<label> candidates(nLocalCandidates);
@@ -1112,10 +1117,10 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
         forAll(candidateCells, celli)
         {
             const bool isCandidate = candidateCells.get(celli);
-            const bool isProtected =
-                !unrefineableCells.empty()
-             || unrefineableCells.get(celli);
-            if ( isCandidate && !isProtected )
+            const bool isOk =
+                unrefineableCells.empty()
+             || !unrefineableCells.get(celli);
+            if ( isCandidate && isOk )
             {
                 candidates.append(celli);
             }
@@ -1174,8 +1179,8 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
 
     }
 
-    // remove cells based on scale funvtion value
-    // to this before consistentSet is created
+    // remove cells based on scale function value
+    // do this before consistentSet is created
     if (scale != 1.0 && !candidates.empty())
     {
         // The scale value represents the percentage of cells to keep
