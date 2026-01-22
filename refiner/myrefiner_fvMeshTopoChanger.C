@@ -92,13 +92,6 @@ Foam::scalar Foam::fvMeshTopoChangers::myrefiner::currentScale() const
             << abort(FatalError);
     }
 
-    if (debug)
-    {
-        DebugInfo
-            << "Refinement scale at time " << mesh().time().value()
-            << " = " << scale << endl;
-    }
-
     return scale;
 }
 
@@ -114,13 +107,6 @@ Foam::label Foam::fvMeshTopoChangers::myrefiner::count
         if (l.get(i) == val)
         {
             n++;
-        }
-
-        // Debug also serves to get-around Clang compiler trying to optimise
-        // out this forAll loop under O3 optimisation
-        if (debug)
-        {
-            Info<< "n=" << n << endl;
         }
     }
 
@@ -901,7 +887,7 @@ void Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
     SortableList<scalar>& allCellError
 ) const
 {
-    // Get error per cell. Is -1 (not to be refined) to >0 (to be refined,
+    // Get error per cell. Is -1 (not to be refined) to >=0 (to be refined,
     // higher more desirable to be refined).
     scalarField cellError
     (
@@ -943,7 +929,6 @@ void Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
     );
     gatheredError.clear();
     allCellError.reverseSort();
-
 }
 
 
@@ -999,7 +984,6 @@ void Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
     );
     gatheredError.clear();
     allCellError.reverseSort();
-
 }
 
 
@@ -1102,17 +1086,34 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
     const label nLocalUnrefineable = count(unrefineableCells, 1);
     const label nUnrefineable = returnReduce(nLocalUnrefineable, sumOp<label>());
 
+    // Collect all cells
+    DynamicList<label> candidates(nLocalCandidates);
+
+    // Number of cells to select
+    label nToSelect = min(nCandidates, nTotToRefine);
+
+    // Apply scaling
+    if (scale != 1.0)
+    {
+        nToSelect = static_cast<label>(nToSelect * scale);
+    }
+
     if (dumpRefinementInfo_)
     {
         setInfo("nTotToRefine", nTotToRefine);
         setInfo("nCandidates", nCandidates);
+        setInfo("nSelected", nToSelect);
         setInfo("nUnrefineable", nUnrefineable);
     }
 
-    // Collect all cells
-    DynamicList<label> candidates(nLocalCandidates);
+    if (nToSelect <= 0)
+    {
+        Info<< "No cells to refine, " << endl;
+        return labelList();
+    }
 
-    if (nCandidates < nTotToRefine)
+    // If we're not cutting selected cells, just pick them all
+    if (scale == 1.0 && nToSelect == nCandidates)
     {
         forAll(candidateCells, celli)
         {
@@ -1120,7 +1121,8 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
             const bool isOk =
                 unrefineableCells.empty()
              || !unrefineableCells.get(celli);
-            if ( isCandidate && isOk )
+            const bool canRefine = cellLevel[celli] < maxRefinement;
+            if (isCandidate && isOk && canRefine)
             {
                 candidates.append(celli);
             }
@@ -1128,70 +1130,56 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
     }
     else
     {
-        // Sort by error
+        // Otherwise select top nToSelect cells
         if (Pstream::parRun())
         {
             globalIndex globalNumbering(mesh().nCells());
-            
-            for(label i = 0; i < nTotToRefine; ++i)
+            for
+            (
+                label i = 0;
+                i < allCellError.size() && candidates.size() < nToSelect;
+                ++i
+            )
             {
                 const label& index = allCellError.indices()[i];
                 label proci = globalNumbering.whichProcID(index);
-				if (proci == Pstream::myProcNo())
+                if (proci == Pstream::myProcNo())
                 {
                     label celli = globalNumbering.toLocal(index);
                     const bool isCandidate = candidateCells.get(celli);
-                    const bool canRefine =
-                        !unrefineableCells.get(celli)
-                     && cellLevel[celli] < maxRefinement;
+                    const bool isOk =
+                        unrefineableCells.empty()
+                     || !unrefineableCells.get(celli);
+                    const bool canRefine = cellLevel[celli] < maxRefinement;
 
-                    if (isCandidate && canRefine)
+                    if (isCandidate && isOk && canRefine)
                     {
                         candidates.append(celli);
-                    }
-                    else
-                    {
-                        nTotToRefine ++;
                     }
                 }
             }
         }
         else
         {
-            for(label i = 0; i< nTotToRefine; ++i)
+            for
+            (
+                label i = 0;
+                i < allCellError.size() && candidates.size() < nToSelect;
+                ++i
+            )
             {
                 const label& celli = allCellError.indices()[i];
                 const bool isCandidate = candidateCells.get(celli);
-                const bool canRefine =
-                    !unrefineableCells.get(celli)
-                 && cellLevel[celli] < maxRefinement;
+                    const bool isOk =
+                        unrefineableCells.empty()
+                     || !unrefineableCells.get(celli);
+                const bool canRefine = cellLevel[celli] < maxRefinement;
 
-                if (isCandidate && canRefine)
+                if (isCandidate && isOk && canRefine)
                 {
                     candidates.append(celli);
                 }
-                else
-                {
-                    nTotToRefine++;
-                }
             }
-        }
-
-    }
-
-    // remove cells based on scale function value
-    // do this before consistentSet is created
-    if (scale != 1.0 && !candidates.empty())
-    {
-        // The scale value represents the percentage of cells to keep
-        // remove cells from teh bottom
-        label nToExclude = static_cast<label>(
-            candidates.size() * (1.0 - scale)
-        );
-
-        if (nToExclude > 0)
-        {
-            candidates.resize(candidates.size() - nToExclude);
         }
     }
 
@@ -1209,14 +1197,20 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
     const scalar upperLimit = allCellError[0];
     const scalar lowerLimit = allCellError[nTotCandidates-1];
 
-    DebugInfo<< "Refinement level range: "
+    DebugInfo
+        << "Refinement level range: "
         << "[" << lowerLimit << " - " << upperLimit << "]" << endl;
 
     const label nTot = returnReduce(consistentSet.size(), sumOp<label>());
 
-    Info<< "Selected " << nTot
+    Info
+        << "Selected " << nTot
         << " cells for refinement out of " << mesh().globalData().nTotalCells()
         << "." << endl;
+
+    DebugInfo
+        << "Additional cells to guarantee 2:1: "
+        << (nTot - nTotCandidates) << endl;
 
     if (dumpRefinementInfo_)
     {
@@ -1631,6 +1625,8 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
 
     bool hasChanged = false;
 
+    // read dynamic part of dictionary
+    refineInterval_ = dict_.lookup<label>("refineInterval");
     if (refineInterval_ == 0)
     {
         return hasChanged;
@@ -1644,14 +1640,11 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
         );
     }
 
-    // Get current scale
-    scalar scale = currentScale();
-
     SortableList<scalar> sortedError;
+    scalar scale = currentScale();
 
     // Note: cannot refine at time 0 since no V0 present since mesh not
     //       moved yet.
-
     if
     (
         mesh().time().timeIndex() > 0
@@ -1659,6 +1652,10 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
      && scale > 0
     )
     {
+        DebugInfo
+            << "Refinement scale at time " << mesh().time().value()
+            << " = " << scale << endl;
+
         // Cells marked for refinement or otherwise protected from unrefinement.
         PackedBoolList refineCells(mesh().nCells());
 
@@ -1695,12 +1692,14 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
             );
         }
 
+        // Don't get it .. Shouldn't be necessary anymore but nBufferLayers_
+        // should be passed to meshCutter_.consistentRefinement
         // Extend with a buffer layer to prevent neighbouring points
         // being unrefined.
-        for (label i = 0; i < nBufferLayers_; i++)
-        {
-            extendMarkedCells(refineCells);
-        }
+        // for (label i = 0; i < nBufferLayers_; i++)
+        // {
+        //     extendMarkedCells(refineCells);
+        // }
 
         PackedBoolList refinableCells(refineCells);
 
@@ -1733,12 +1732,8 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
                 )
             );
 
-            const label nCellsToRefine = returnReduce
-            (
-                cellsToRefine.size(), sumOp<label>()
-            );
-
-            if (nCellsToRefine > 0)
+            const label nCellsToRefineLocal = cellsToRefine.size();
+            if (returnReduce(nCellsToRefineLocal, sumOp<label>()) > 0)
             {
                 // Refine/update mesh and map fields
                 autoPtr<polyTopoChangeMap> map = refine(cellsToRefine);
