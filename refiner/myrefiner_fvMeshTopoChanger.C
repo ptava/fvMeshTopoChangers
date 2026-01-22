@@ -1134,18 +1134,13 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
         if (Pstream::parRun())
         {
             globalIndex globalNumbering(mesh().nCells());
-            for
-            (
-                label i = 0;
-                i < allCellError.size() && candidates.size() < nToSelect;
-                ++i
-            )
+            for (label i = 0; i < nToSelect; ++i)
             {
                 const label& index = allCellError.indices()[i];
-                label proci = globalNumbering.whichProcID(index);
+                const label proci = globalNumbering.whichProcID(index);
                 if (proci == Pstream::myProcNo())
                 {
-                    label celli = globalNumbering.toLocal(index);
+                    const label celli = globalNumbering.toLocal(index);
                     const bool isCandidate = candidateCells.get(celli);
                     const bool isOk =
                         unrefineableCells.empty()
@@ -1226,8 +1221,12 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
             "refinedCells"
         );
 
-        DebugInfo<< "Refined cells: " << nTot << endl;
-        DebugInfo<< "Refined cells set size: " << refinedCells_->size() << endl;
+        DebugInfo
+            << "Refined cells: " << nTot << endl;
+        DebugInfo
+            << "Refined cells set size: "
+            << returnReduce(refinedCells_->size(), sumOp<label>())
+            << endl;
     }
 
     return consistentSet;
