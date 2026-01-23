@@ -462,7 +462,6 @@ Foam::fvMeshTopoChangers::myrefiner::unrefine
     if (dumpRefinementInfo_)
     {
         setInfo("nTotUnrefined", nUnrefinedCells);
-        setInfo("nCells", nCellsAfter);
 
         // Store the identifiers of cells removed by unrefinement
         const labelList& reverseCellMap = map().reverseCellMap();
@@ -1151,6 +1150,10 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
                     {
                         candidates.append(celli);
                     }
+                    else
+                    {
+                        nToSelect++;
+                    }
                 }
             }
         }
@@ -1772,6 +1775,20 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
                 hasChanged = true;
             }
         }
+        else
+        {
+            // Set dump info to zero/nan
+            if (dumpRefinementInfo_)
+            {
+                const scalar nan = std::numeric_limits<scalar>::quiet_NaN();
+                setInfo("nTotToRefine", 0);
+                setInfo("nCandidates", 0);
+                setInfo("nSelected", 0);
+                setInfo("nTotRefined", 0);
+                setInfo("upperLimit", nan);
+                setInfo("lowerLimit", nan);
+            }
+        }
 
         {
             // if (dict_.isDict("refinementRegions"))
@@ -1816,6 +1833,11 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
                 unrefine(pointsToUnrefine);
 
                 hasChanged = true;
+            }
+
+            if (debug)
+            {
+                setInfo("nCells", mesh().globalData().nTotalCells());
             }
         }
 
