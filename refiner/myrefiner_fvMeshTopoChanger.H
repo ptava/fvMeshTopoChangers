@@ -238,6 +238,9 @@ class myrefiner
             const word& name
         ) const;
 
+        //- Reset dump info fields to zero/nan
+        void resetDumpInfo();
+
         //- Setters: assign computed values
         template<autoPtr<volScalarField> fvMeshTopoChangers::myrefiner::* MemberPtr>
         inline void setDumpField

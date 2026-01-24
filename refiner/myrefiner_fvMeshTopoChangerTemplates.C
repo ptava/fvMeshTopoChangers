@@ -116,6 +116,11 @@ inline void Foam::fvMeshTopoChangers::myrefiner::setDumpList
             vals.size()
         )
     );
+
+    forAll(vals, i)
+    {
+        (*lst)[i] = vals[i];
+    }
 }
 // ************************************************************************* //
 

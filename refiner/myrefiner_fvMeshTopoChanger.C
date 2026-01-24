@@ -78,6 +78,23 @@ void Foam::fvMeshTopoChangers::myrefiner::makeDumpField
     );
 }
 
+void Foam::fvMeshTopoChangers::myrefiner::resetDumpInfo()
+{
+    if (!dumpRefinementInfo_)
+    {
+        return;
+    }
+
+    const scalar nan = std::numeric_limits<scalar>::quiet_NaN();
+
+    setInfo("nTotToRefine", 0);
+    setInfo("nCandidates", 0);
+    setInfo("nSelected", 0);
+    setInfo("nTotRefined", 0);
+    setInfo("upperLimit", nan);
+    setInfo("lowerLimit", nan);
+}
+
 Foam::scalar Foam::fvMeshTopoChangers::myrefiner::currentScale() const
 {
     if (!refineScale_.valid()) return 1.0;
@@ -457,12 +474,17 @@ Foam::fvMeshTopoChangers::myrefiner::unrefine
     Info<< "Unrefined from " << nCellsBefore
         << " to " << nCellsAfter << " cells." << endl;
 
-    DebugInfo<< "Unrefined cells: " << nUnrefinedCells << endl;
 
     if (dumpRefinementInfo_)
     {
         setInfo("nTotUnrefined", nUnrefinedCells);
 
+    }
+
+    if (debug)
+    {
+        Info<< "Unrefined cells: " << nUnrefinedCells << endl;
+        
         // Store the identifiers of cells removed by unrefinement
         const labelList& reverseCellMap = map().reverseCellMap();
         PackedBoolList cellMask(reverseCellMap.size());
@@ -483,7 +505,7 @@ Foam::fvMeshTopoChangers::myrefiner::unrefine
             "unrefinedCells"
         );
 
-        DebugInfo 
+        Info 
             << "Unrefined cells set size: "
             << returnReduce(unrefinedCells_->size(), sumOp<label>())
             << endl;
@@ -1085,6 +1107,9 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
     const label nLocalUnrefineable = count(unrefineableCells, 1);
     const label nUnrefineable = returnReduce(nLocalUnrefineable, sumOp<label>());
 
+    // Cache if unrefineableCells is empty
+    const bool hasUnrefineable = !unrefineableCells.empty();
+
     // Collect all cells
     DynamicList<label> candidates(nLocalCandidates);
 
@@ -1117,9 +1142,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
         forAll(candidateCells, celli)
         {
             const bool isCandidate = candidateCells.get(celli);
-            const bool isOk =
-                unrefineableCells.empty()
-             || !unrefineableCells.get(celli);
+            const bool isOk = !hasUnrefineable || !unrefineableCells.get(celli);
             const bool canRefine = cellLevel[celli] < maxRefinement;
             if (isCandidate && isOk && canRefine)
             {
@@ -1132,28 +1155,34 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
         // Otherwise select top nToSelect cells
         if (Pstream::parRun())
         {
+            const label myproc = Pstream::myProcNo();
             globalIndex globalNumbering(mesh().nCells());
-            for (label i = 0; i < nToSelect; ++i)
+            label nToSelectGlobal = 0;
+            for (label i = 0; i < allCellError.size(); ++i)
             {
-                const label& index = allCellError.indices()[i];
-                const label proci = globalNumbering.whichProcID(index);
-                if (proci == Pstream::myProcNo())
+                const label& globalCelli = allCellError.indices()[i];
+                const label proci = globalNumbering.whichProcID(globalCelli);
+                label localAccepted = 0;
+                if (proci != myproc)
                 {
-                    const label celli = globalNumbering.toLocal(index);
+                    const label celli = globalNumbering.toLocal(globalCelli);
                     const bool isCandidate = candidateCells.get(celli);
-                    const bool isOk =
-                        unrefineableCells.empty()
-                     || !unrefineableCells.get(celli);
+                    const bool isOk = !hasUnrefineable || !unrefineableCells.get(celli);
                     const bool canRefine = cellLevel[celli] < maxRefinement;
 
                     if (isCandidate && isOk && canRefine)
                     {
                         candidates.append(celli);
+                        localAccepted++;
                     }
-                    else
-                    {
-                        nToSelect++;
-                    }
+                }
+                // Sum up number of accepted cells
+                const label totalAccepted = returnReduce(localAccepted, sumOp<label>());
+                nToSelectGlobal += totalAccepted;
+
+                if (nToSelectGlobal >= nToSelect)
+                {
+                    break;
                 }
             }
         }
@@ -1168,9 +1197,8 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
             {
                 const label& celli = allCellError.indices()[i];
                 const bool isCandidate = candidateCells.get(celli);
-                    const bool isOk =
-                        unrefineableCells.empty()
-                     || !unrefineableCells.get(celli);
+                const bool isOk =
+                    !hasUnrefineable || !unrefineableCells.get(celli);
                 const bool canRefine = cellLevel[celli] < maxRefinement;
 
                 if (isCandidate && isOk && canRefine)
@@ -1192,6 +1220,11 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
     );
 
     const label nTotCandidates = returnReduce(candidates.size(), sumOp<label>());
+    if (nTotCandidates == 0)
+    {
+        Info<< "No suitable cells to refine after filtering." << endl;
+        return labelList();
+    }
     const scalar upperLimit = allCellError[0];
     const scalar lowerLimit = allCellError[nTotCandidates-1];
 
@@ -1217,16 +1250,18 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
         setInfo("upperLimit", upperLimit);
         setInfo("lowerLimit", lowerLimit);
 
-        // Store list
+    }
+
+    if (debug)
+    {
         setDumpList<&myrefiner::refinedCells_>
         (
             consistentSet,
             "refinedCells"
         );
 
-        DebugInfo
-            << "Refined cells: " << nTot << endl;
-        DebugInfo
+        Info << "Refined cells: " << nTot << endl;
+        Info
             << "Refined cells set size: "
             << returnReduce(refinedCells_->size(), sumOp<label>())
             << endl;
@@ -1259,39 +1294,146 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
 
     DynamicList<label> newSplitPoints(splitPoints.size());
 
+    bool hasMarked = false;
+    bool belowLevel = true;
+    boolList pointHasMarked(mesh().nPoints(), hasMarked);
+    boolList pointBelowLevel(mesh().nPoints(), belowLevel);
+
+    if (Pstream::parRun())
+    {
+        DynamicList<label> processorPatchPoints(splitPoints.size());
+
+        forAll(splitPoints, i)
+        {
+            const label pointi = splitPoints[i];
+            const labelList& pFaces = mesh().pointFaces()[pointi];
+            forAll(pFaces, pFacei)
+            {
+                const label facei = pFaces[pFacei];
+                if (!mesh().isInternalFace(facei))
+                {
+                    const label patchi =
+                        mesh().boundaryMesh().whichPatch(facei);
+                    const polyPatch& patch = mesh().boundaryMesh()[patchi];
+                    if (isA<processorPolyPatch>(patch))
+                    {
+                        processorPatchPoints.append(pointi);
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (processorPatchPoints.size())
+        {
+            processorPatchPoints.shrink();
+            // number of pointCells for each processorPatch point
+            forAll (processorPatchPoints, i)
+            {
+                const label pointi = processorPatchPoints[i];
+                const labelList& pCells = mesh().pointCells()[pointi];
+
+                Pout
+                    << "Debug stop: point " << pointi
+                    << " with neighbours cells " << pCells.size() << endl;
+            }
+        }
+    }
+
+
     forAll(splitPoints, i)
     {
         const label pointi = splitPoints[i];
-
-        // Check that all cells are not marked
         const labelList& pCells = mesh().pointCells()[pointi];
 
-        bool hasMarked = false;
-        bool belowLevel = true;
+        // if (debug && Pstream::parRun())
+        // {
+        //     bool onProcessorPatch = false;
+        //     const labelList& pFaces = mesh().pointFaces()[pointi];
+        //     forAll(pFaces, pFacei)
+        //     {
+        //         const label facei = pFaces[pFacei];
+        //         if (!mesh().isInternalFace(facei))
+        //         {
+        //             const label patchi =
+        //                 mesh().boundaryMesh().whichPatch(facei);
+        //             const polyPatch& patch = mesh().boundaryMesh()[patchi];
+        //             if (isA<processorPolyPatch>(patch))
+        //             {
+        //                 onProcessorPatch = true;
+        //                 break;
+        //             }
+        //         }
+        //     }
+        //     if (onProcessorPatch)
+        //     {
+        //         FatalErrorInFunction
+        //             << "Debug stop: point " << pointi
+        //             << " is on processor patch. vFld values for point cells:"
+        //             << nl
+        //             << UIndirectList<scalar>(vFld, pCells)
+        //             << nl
+        //             << "cell ids: " << pCells
+        //             << exit(FatalError);
+        //     }
+        // }
 
-        forAll(pCells, pCelli)
+        forAll(pCells, i)
         {
-            const label celli = pCells[pCelli];
+            const label celli = pCells[i];
             if (markedCell.get(celli))
             {
-                hasMarked = true;
-                break;
+                pointHasMarked[pointi] = true;
             }
 
             if (vFld[celli] >= unrefineLevel)
             {
-                belowLevel = false;
-                break;
+                pointBelowLevel[pointi] = false;
             }
         }
 
-        if (!hasMarked && belowLevel)
+        if (hasMarked || !belowLevel)
+        {
+            newSplitPoints.append(pointi);
+            break;
+        }
+    }
+
+    // label nLocalEligibleBefore = 0;
+    // forAll(splitPoints, i)
+    // {
+    //     const label pointi = splitPoints[i];
+    //     if (!pointHasMarked[pointi] && pointBelowLevel[pointi])
+    //     {
+    //         nLocalEligibleBefore++;
+    //     }
+    // }
+
+    // const label nEligibleBefore =
+    //     returnReduce(nLocalEligibleBefore, sumOp<label>());
+
+    // Maybe syncing is overkill here, but safer
+    syncTools::syncPointList(mesh(), pointHasMarked, orEqOp<bool>(), hasMarked);
+    syncTools::syncPointList(mesh(), pointBelowLevel, orEqOp<bool>(), belowLevel);
+
+    forAll(splitPoints, i)
+    {
+        const label pointi = splitPoints[i];
+
+        if (!pointHasMarked[pointi] && pointBelowLevel[pointi])
         {
             newSplitPoints.append(pointi);
         }
     }
 
     newSplitPoints.shrink();
+
+    // DebugInfo
+    //     << "Unrefine split points before sync (local/global): "
+    //     << nLocalEligibleBefore << " / " << nEligibleBefore
+    //     << ", after sync: "
+    //     << returnReduce(newSplitPoints.size(), sumOp<label>())
+    //     << endl;
 
     // Guarantee 2:1 refinement after unrefinement
     labelList consistentSet
@@ -1774,20 +1916,14 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
 
                 hasChanged = true;
             }
+            else
+            {
+                resetDumpInfo();
+            }
         }
         else
         {
-            // Set dump info to zero/nan
-            if (dumpRefinementInfo_)
-            {
-                const scalar nan = std::numeric_limits<scalar>::quiet_NaN();
-                setInfo("nTotToRefine", 0);
-                setInfo("nCandidates", 0);
-                setInfo("nSelected", 0);
-                setInfo("nTotRefined", 0);
-                setInfo("upperLimit", nan);
-                setInfo("lowerLimit", nan);
-            }
+            resetDumpInfo();
         }
 
         {
