@@ -1163,7 +1163,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
                 const label& globalCelli = allCellError.indices()[i];
                 const label proci = globalNumbering.whichProcID(globalCelli);
                 label localAccepted = 0;
-                if (proci != myproc)
+                if (proci == myproc)
                 {
                     const label celli = globalNumbering.toLocal(globalCelli);
                     const bool isCandidate = candidateCells.get(celli);
