@@ -1971,7 +1971,7 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
                 hasChanged = true;
             }
 
-            if (debug)
+            if (dumpRefinementInfo_)
             {
                 setInfo("nCells", mesh().globalData().nTotalCells());
             }
