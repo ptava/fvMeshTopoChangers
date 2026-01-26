@@ -1299,46 +1299,46 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
     boolList pointHasMarked(mesh().nPoints(), hasMarked);
     boolList pointBelowLevel(mesh().nPoints(), belowLevel);
 
-    if (Pstream::parRun())
-    {
-        DynamicList<label> processorPatchPoints(splitPoints.size());
-
-        forAll(splitPoints, i)
-        {
-            const label pointi = splitPoints[i];
-            const labelList& pFaces = mesh().pointFaces()[pointi];
-            forAll(pFaces, pFacei)
-            {
-                const label facei = pFaces[pFacei];
-                if (!mesh().isInternalFace(facei))
-                {
-                    const label patchi =
-                        mesh().boundaryMesh().whichPatch(facei);
-                    const polyPatch& patch = mesh().boundaryMesh()[patchi];
-                    if (isA<processorPolyPatch>(patch))
-                    {
-                        processorPatchPoints.append(pointi);
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (processorPatchPoints.size())
-        {
-            processorPatchPoints.shrink();
-            // number of pointCells for each processorPatch point
-            forAll (processorPatchPoints, i)
-            {
-                const label pointi = processorPatchPoints[i];
-                const labelList& pCells = mesh().pointCells()[pointi];
-
-                Pout
-                    << "Debug stop: point " << pointi
-                    << " with neighbours cells " << pCells.size() << endl;
-            }
-        }
-    }
+    // if (Pstream::parRun())
+    // {
+    //     DynamicList<label> processorPatchPoints(splitPoints.size());
+    //
+    //     forAll(splitPoints, i)
+    //     {
+    //         const label pointi = splitPoints[i];
+    //         const labelList& pFaces = mesh().pointFaces()[pointi];
+    //         forAll(pFaces, pFacei)
+    //         {
+    //             const label facei = pFaces[pFacei];
+    //             if (!mesh().isInternalFace(facei))
+    //             {
+    //                 const label patchi =
+    //                     mesh().boundaryMesh().whichPatch(facei);
+    //                 const polyPatch& patch = mesh().boundaryMesh()[patchi];
+    //                 if (isA<processorPolyPatch>(patch))
+    //                 {
+    //                     processorPatchPoints.append(pointi);
+    //                     break;
+    //                 }
+    //             }
+    //         }
+    //     }
+    //
+    //     if (processorPatchPoints.size())
+    //     {
+    //         processorPatchPoints.shrink();
+    //         // number of pointCells for each processorPatch point
+    //         forAll (processorPatchPoints, i)
+    //         {
+    //             const label pointi = processorPatchPoints[i];
+    //             const labelList& pCells = mesh().pointCells()[pointi];
+    //
+    //             Pout
+    //                 << "Debug stop: point " << pointi
+    //                 << " with neighbours cells " << pCells.size() << endl;
+    //         }
+    //     }
+    // }
 
 
     forAll(splitPoints, i)
@@ -1390,12 +1390,6 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
             {
                 pointBelowLevel[pointi] = false;
             }
-        }
-
-        if (hasMarked || !belowLevel)
-        {
-            newSplitPoints.append(pointi);
-            break;
         }
     }
 
