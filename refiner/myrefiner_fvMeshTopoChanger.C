@@ -1281,7 +1281,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
         refineDict.lookupOrDefault<scalar>
         (
             "unrefineLevel",
-            GREAT
+            -GREAT
         );
     const volScalarField& vFld =
         mesh().lookupObject<volScalarField>
@@ -1295,9 +1295,9 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
     DynamicList<label> newSplitPoints(splitPoints.size());
 
     bool hasMarked = false;
-    bool belowLevel = true;
+    bool aboveLevel = false;
     boolList pointHasMarked(mesh().nPoints(), hasMarked);
-    boolList pointBelowLevel(mesh().nPoints(), belowLevel);
+    boolList pointAboveLevel(mesh().nPoints(), aboveLevel);
 
     // if (Pstream::parRun())
     // {
@@ -1384,11 +1384,13 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
             if (markedCell.get(celli))
             {
                 pointHasMarked[pointi] = true;
+                break;
             }
 
             if (vFld[celli] >= unrefineLevel)
             {
-                pointBelowLevel[pointi] = false;
+                pointAboveLevel[pointi] = true;
+                break;
             }
         }
     }
@@ -1408,13 +1410,13 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
 
     // Maybe syncing is overkill here, but safer
     syncTools::syncPointList(mesh(), pointHasMarked, orEqOp<bool>(), hasMarked);
-    syncTools::syncPointList(mesh(), pointBelowLevel, orEqOp<bool>(), belowLevel);
+    syncTools::syncPointList(mesh(), pointAboveLevel, orEqOp<bool>(), aboveLevel);
 
     forAll(splitPoints, i)
     {
         const label pointi = splitPoints[i];
 
-        if (!pointHasMarked[pointi] && pointBelowLevel[pointi])
+        if (!pointHasMarked[pointi] && !pointAboveLevel[pointi])
         {
             newSplitPoints.append(pointi);
         }
@@ -1948,7 +1950,7 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
             // }
             const labelList pointsToUnrefine
             (
-                selectUnrefinePoints(refinableCells, dict_)
+                selectUnrefinePoints(refineCells, dict_)
             );
 
             const label nSplitPoints = returnReduce
