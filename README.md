@@ -11,6 +11,61 @@ Working on adaptive mesh refinement in OpenFOAM.
 - [x] Unrefinement based on user-defined threshold `unrefineLevel` and processed field values.
 - [x] Synchronize unrefinement selection across processors (is it really needed?).
 
+---
+
+### Why adaptive mesh refinement?
+<p align="center">
+    <img src="assets/imgs/amr_why.png" width="90%" height="90%">
+</p>
+
+### Refiner library visual representation
+<p align="center">
+    <img src="assets/imgs/amr.png" width="90%" height="90%">
+</p>
+
+---
+### Examples
+
+#### Q-criterion based refinement
+<div align="center">
+    <table>
+      <tr>
+        <td align="center">
+            <img src="assets/videos/posQ.gif" alt="Video 1 preview" width="700">
+          <br>
+          <sub><b>Refine vortices-dominated region</b></sub>
+        </td>
+      </tr>
+      <tr>
+        <td align="center">
+            <img src="assets/videos/negQ.gif" alt="Video 2 preview" width="700">
+          <br>
+          <sub><b>Refine in strain-dominated region</b></sub>
+        </td>
+      </tr>
+      <tr>
+        <td align="center">
+            <img src="assets/videos/absQ.gif" alt="Video 3 preview" width="700">
+          <br>
+          <sub><b>Refine both vortex/strain-dominated regions</b></sub>
+        </td>
+      </tr>
+    </table>
+</div>
+
+#### Von Kàrmàn length scale based refinement
+
+<div align="center">
+    <table>
+      <tr>
+        <td align="center">
+            <img src="assets/videos/lvk.gif" alt="Video 1 preview" width="700">
+          <br>
+          <sub><b>Refine where the high-wave-number filter is active</b></sub>
+        </td>
+      </tr>
+    </table>
+</div>
 
 ---
 
