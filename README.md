@@ -10,6 +10,8 @@ Working on adaptive mesh refinement in OpenFOAM.
 - [x] Introduce a user-defined time-based smoothing to gradually ramp in cell refinement at startup, still supporting sorting candidate cells for refinement.
 - [x] Unrefinement based on user-defined threshold `unrefineLevel` and processed field values.
 - [x] Synchronize unrefinement selection across processors (is it really needed?).
+- [x] User can now change run-time parameters in `dynamicMeshDict`
+- [x] New dictionary entry `unrefineInterval` to control how often unrefinement is performed
 
 ---
 
@@ -91,8 +93,9 @@ Working on adaptive mesh refinement in OpenFOAM.
 >     * `nToUnrefined`: number of cells unrefined
 >     * `lowerLimit`: lower limit threshold applied on `cellError`
 >     * `upperLimit`: upper limit threshold applied on `cellError`
+>     * `nAtMaxRefinement`: number of cells at maximum refinement level (after refinement))
 > 
-> - Available `volScalarField` associated with `cellError` for additional post-processing via `dumpRefinementInfo` flag.
+> - Available `volScalarField` associated with `cellError` for additional post-processing via `dumpRefinementFields` flag.
 > 
 > - Available `labelIOList` of refined and unrefined cells with debugging flag
 > 

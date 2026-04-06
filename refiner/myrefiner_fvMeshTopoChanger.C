@@ -70,7 +70,7 @@ void Foam::fvMeshTopoChangers::myrefiner::makeDumpField
                 this->mesh().time().name(),
                 this->mesh().thisDb(),
                 IOobject::NO_READ,
-                IOobject::NO_WRITE
+                IOobject::AUTO_WRITE
             ),
             this->mesh(),
             dimensionedScalar(dimless, Zero)
@@ -260,6 +260,8 @@ void Foam::fvMeshTopoChangers::myrefiner::calculateProtectedCells
 void Foam::fvMeshTopoChangers::myrefiner::readDict()
 {
     refineInterval_ = dict_.lookup<label>("refineInterval");
+    unrefineInterval_ =
+        dict_.lookupOrDefault<label>("unrefineInterval", refineInterval_);
 
     if (refineInterval_ < 0)
     {
@@ -619,7 +621,6 @@ void Foam::fvMeshTopoChangers::myrefiner::refineFluxes
     }
 }
 
-
 void Foam::fvMeshTopoChangers::myrefiner::unrefineFluxes
 (
     const Map<label>& faceToSplitPoint,
@@ -885,7 +886,6 @@ Foam::scalarField Foam::fvMeshTopoChangers::myrefiner::error
     forAll(cells, i)
     {
         const label celli = cells[i];
-
         scalar err = min(fld[celli] - minLevel, maxLevel - fld[celli]);
 
         if (err >= 0)
@@ -916,7 +916,7 @@ void Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
     );
 
     // Store into registry
-    if (dumpRefinementInfo_)
+    if (dumpRefinementFields_)
     {
         setDumpField<&myrefiner::cellError_>
         (
@@ -924,7 +924,6 @@ void Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
             "cellError"
         );
     }
-
 
     // Mark cells that are candidates for refinement.
     forAll(cellError, celli)
@@ -972,7 +971,7 @@ void Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
     );
 
     // Store into registry
-    if (dumpRefinementInfo_)
+    if (dumpRefinementFields_)
     {
         setDumpField<&myrefiner::cellError_>
         (
@@ -1094,8 +1093,6 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
         return labelList();
     }
 
-    const labelList& cellLevel = meshCutter_.cellLevel();
-
     // Mark cells that cannot be refined since they would trigger refinement
     // of protected cells (since 2:1 cascade)
     PackedBoolList unrefineableCells;
@@ -1132,7 +1129,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
 
     if (nToSelect <= 0)
     {
-        Info<< "No cells to refine, " << endl;
+        Info<< "No cells selected for refinement" << endl;
         return labelList();
     }
 
@@ -1143,8 +1140,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
         {
             const bool isCandidate = candidateCells.get(celli);
             const bool isOk = !hasUnrefineable || !unrefineableCells.get(celli);
-            const bool canRefine = cellLevel[celli] < maxRefinement;
-            if (isCandidate && isOk && canRefine)
+            if (isCandidate && isOk)
             {
                 candidates.append(celli);
             }
@@ -1168,9 +1164,8 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
                     const label celli = globalNumbering.toLocal(globalCelli);
                     const bool isCandidate = candidateCells.get(celli);
                     const bool isOk = !hasUnrefineable || !unrefineableCells.get(celli);
-                    const bool canRefine = cellLevel[celli] < maxRefinement;
 
-                    if (isCandidate && isOk && canRefine)
+                    if (isCandidate && isOk)
                     {
                         candidates.append(celli);
                         localAccepted++;
@@ -1199,9 +1194,8 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
                 const bool isCandidate = candidateCells.get(celli);
                 const bool isOk =
                     !hasUnrefineable || !unrefineableCells.get(celli);
-                const bool canRefine = cellLevel[celli] < maxRefinement;
 
-                if (isCandidate && isOk && canRefine)
+                if (isCandidate && isOk)
                 {
                     candidates.append(celli);
                 }
@@ -1245,7 +1239,6 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
 
     if (dumpRefinementInfo_)
     {
-        // Store sclars/labels
         setInfo("nTotRefined", nTot);
         setInfo("upperLimit", upperLimit);
         setInfo("lowerLimit", lowerLimit);
@@ -1556,6 +1549,7 @@ Foam::fvMeshTopoChangers::myrefiner::myrefiner(fvMesh& mesh, const dictionary& d
     meshCutter_(mesh),
     dumpLevel_(false),
     dumpRefinementInfo_(false),
+    dumpRefinementFields_(false),
     nRefinementIterations_(0),
     protectedCells_(mesh.nCells(), 0),
     changedSinceWrite_(false),
@@ -1602,7 +1596,6 @@ Foam::fvMeshTopoChangers::myrefiner::myrefiner(fvMesh& mesh, const dictionary& d
             }
         }
     }
-
 
     // Count number of points <= faceLevel
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1753,6 +1746,25 @@ Foam::fvMeshTopoChangers::myrefiner::~myrefiner()
 
 bool Foam::fvMeshTopoChangers::myrefiner::update()
 {
+    // Re-read dictionary. Chosen since usually -small so trivial amount
+    // of time compared to actual refinement. Also very useful to be able
+    // to modify on-the-fly.
+    dictionary dict_
+    (
+        IOdictionary
+        (
+            IOobject
+            (
+                "dynamicMeshDict",
+                mesh().time().constant(),
+                mesh(),
+                IOobject::MUST_READ,
+                IOobject::NO_WRITE,
+                false
+            )
+        ).subDict("topoChanger")
+    );
+
     // Only refine on the first call in a time-step
     if (timeIndex_ != mesh().time().timeIndex())
     {
@@ -1767,6 +1779,8 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
 
     // read dynamic part of dictionary
     refineInterval_ = dict_.lookup<label>("refineInterval");
+    maxCells_ = dict_.lookup<label>("maxCells");
+
     if (refineInterval_ == 0)
     {
         return hasChanged;
@@ -1846,13 +1860,27 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
         {
             const labelList& cellLevel = meshCutter_.cellLevel();
 
+            // Count cells that have reached max refinement
+            label reachedMaxRefinement = 0;
+
             // Mark cells that are candidates for refinement.
             forAll(cellLevel, celli)
             {
                 if (cellLevel[celli] >= maxRefinement)
                 {
+                    reachedMaxRefinement++;
                     refinableCells.unset(celli);
                 }
+            }
+
+            if (dumpRefinementInfo_)
+            {
+                reachedMaxRefinement = returnReduce
+                (
+                    reachedMaxRefinement,
+                    sumOp<label>()
+                );
+                setInfo("nAtMaxRefinement", reachedMaxRefinement);
             }
         }
 
@@ -1922,32 +1950,12 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
             resetDumpInfo();
         }
 
+        // Unrefine if reminder of nRefinementIterations_ / unrefineInterval_ == 0
+        if (
+            unrefineInterval_ > 0
+         && nRefinementIterations_ % unrefineInterval_ == 0
+        )
         {
-            // if (dict_.isDict("refinementRegions"))
-            // {
-            //     forAllConstIter(dictionary, refinementRegions, iter)
-            //     {
-            //         const labelList pointsToUnrefine
-            //         (
-            //             selectUnrefinePoints
-            //             (
-            //                 refineCells,
-            //                 refinementRegions.subDict(iter().keyword())
-            //             )
-            //         );
-            //     }
-            // }
-            // else
-            // {
-            //     const labelList pointsToUnrefine
-            //     (
-            //         selectUnrefinePoints
-            //         (
-            //             refineCells,
-            //             dict_
-            //         )
-            //     );
-            // }
             const labelList pointsToUnrefine
             (
                 selectUnrefinePoints(refineCells, dict_)
@@ -1972,7 +1980,6 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
                 setInfo("nCells", mesh().globalData().nTotalCells());
             }
         }
-
 
         if ((nRefinementIterations_ % 10) == 0)
         {

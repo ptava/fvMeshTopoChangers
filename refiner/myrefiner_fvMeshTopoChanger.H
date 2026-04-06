@@ -187,6 +187,8 @@ class myrefiner
 
         label refineInterval_;
 
+        label unrefineInterval_;
+
         label maxCells_;
 
         label nBufferLayers_;
@@ -197,9 +199,11 @@ class myrefiner
         //- Dump cellLevel for postprocessing
         Switch dumpLevel_;
 
-        //- Dump processing info (number of selectable cells, maximum/minimum
-        //  "cellError", number of selected cells
+        //- Dump processing info (labels)
         bool dumpRefinementInfo_;
+
+        //- Dump processing info (fields)
+        bool dumpRefinementFields_;
 
         //- Fluxes to map
         HashTable<word> correctFluxes_;
