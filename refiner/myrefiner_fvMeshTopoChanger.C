@@ -537,20 +537,23 @@ Foam::fvMeshTopoChangers::myrefiner::refine
     }
 
     // Update numbering of protectedCells_
-    if (protectedCells_.size())
-    {
-        PackedBoolList newProtectedCell(mesh().nCells());
-
-        forAll(newProtectedCell, celli)
-        {
-            const label oldCelli = map().cellMap()[celli];
-            newProtectedCell.set(celli, protectedCells_.get(oldCelli));
-        }
-        protectedCells_.transfer(newProtectedCell);
-    }
+    // if (protectedCells_.size())
+    // {
+    //     PackedBoolList newProtectedCell(mesh().nCells());
+    //
+    //     forAll(newProtectedCell, celli)
+    //     {
+    //         const label oldCelli = map().cellMap()[celli];
+    //         newProtectedCell.set(celli, protectedCells_.get(oldCelli));
+    //     }
+    //     protectedCells_.transfer(newProtectedCell);
+    // }
 
     // Debug: Check refinement levels (across faces only)
     meshCutter_.checkRefinementLevels(-1, labelList(0));
+
+    // Cells selection process requires protectedCells_ to be updated
+    protectedCellsDirty_ = true;
 
     return map;
 }
@@ -659,23 +662,26 @@ Foam::fvMeshTopoChangers::myrefiner::unrefine
     unrefineUfs(faceToSplitPoint, map());
 
     // Update numbering of protectedCells_
-    if (protectedCells_.size())
-    {
-        PackedBoolList newProtectedCell(mesh().nCells());
-
-        forAll(newProtectedCell, celli)
-        {
-            const label oldCelli = map().cellMap()[celli];
-            if (oldCelli >= 0)
-            {
-                newProtectedCell.set(celli, protectedCells_.get(oldCelli));
-            }
-        }
-        protectedCells_.transfer(newProtectedCell);
-    }
+    // if (protectedCells_.size())
+    // {
+    //     PackedBoolList newProtectedCell(mesh().nCells());
+    //
+    //     forAll(newProtectedCell, celli)
+    //     {
+    //         const label oldCelli = map().cellMap()[celli];
+    //         if (oldCelli >= 0)
+    //         {
+    //             newProtectedCell.set(celli, protectedCells_.get(oldCelli));
+    //         }
+    //     }
+    //     protectedCells_.transfer(newProtectedCell);
+    // }
 
     // Debug: Check refinement levels (across faces only)
     meshCutter_.checkRefinementLevels(-1, labelList(0));
+
+    // Cells selection process requires protectedCells_ to be updated
+    protectedCellsDirty_ = true;
 
     return map;
 }
@@ -1231,6 +1237,11 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
 
     // Mark cells that cannot be refined since they would trigger refinement
     // of protected cells (since 2:1 cascade)
+    if (protectedCellsDirty_)
+    {
+        buildProtectedCells();
+        protectedCellsDirty_ = false;
+    }
     PackedBoolList unrefineableCells;
     calculateProtectedCells(unrefineableCells);
 
@@ -1702,6 +1713,7 @@ Foam::fvMeshTopoChangers::myrefiner::myrefiner(fvMesh& mesh, const dictionary& d
     nRefinementIterations_(0),
     protectedCells_(mesh.nCells(), 0),
     changedSinceWrite_(false),
+    protectedCellsDirty_(true),
     timeIndex_(-1)
 {
     // Read static part of dictionary

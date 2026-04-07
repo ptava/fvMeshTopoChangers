@@ -218,6 +218,9 @@ class myrefiner
         //  the refinement history was written
         mutable bool changedSinceWrite_;
 
+        //- Has the mesh refinement changed protectedCells_
+        mutable bool protectedCellsDirty_;
+
         //- The time index used for updating
         label timeIndex_;
 
