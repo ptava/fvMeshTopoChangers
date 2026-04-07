@@ -189,8 +189,6 @@ class myrefiner
 
         label unrefineInterval_;
 
-        label unrefineInterval_;
-
         label maxCells_;
 
         label nBufferLayers_;

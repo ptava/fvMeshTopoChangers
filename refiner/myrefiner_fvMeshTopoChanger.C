@@ -316,7 +316,7 @@ void Foam::fvMeshTopoChangers::myrefiner::readDict()
 }
 
 
-void Foam::fvMeshTopoChangers::refiner::buildProtectedCells
+void Foam::fvMeshTopoChangers::myrefiner::buildProtectedCells()
 {
     const fvMesh& mesh = this->mesh();
     const labelList& cellLevel = meshCutter_.cellLevel();
@@ -1384,7 +1384,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
     }
 
     // Guarantee 2:1 refinement after refinement
-    const labelList baseCandidates(candidates.shrink())
+    const labelList baseCandidates(candidates.shrink());
     labelList consistentSet
     (
         meshCutter_.consistentRefinement
@@ -1446,8 +1446,8 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
 
         Info
             << "Refinement level range "
-            << "[" << lowerLimit << " - " << upperLimit << "]" << endl;
-            << "Refined cells: " << nTot << endl;
+            << "[" << lowerLimit << " - " << upperLimit << "]" << endl
+            << "Refined cells: " << nTot << endl
             << "Refined cells set size: "
             << returnReduce(refinedCells_->size(), sumOp<label>())
             << endl;
@@ -1799,6 +1799,8 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
 
     // read dynamic part of dictionary
     refineInterval_ = dict_.lookup<label>("refineInterval");
+    unrefineInterval_ =
+        dict_.lookupOrDefault<label>("unrefineInterval", refineInterval_);
     maxCells_ = dict_.lookup<label>("maxCells");
 
     if (refineInterval_ == 0)
