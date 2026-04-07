@@ -189,6 +189,8 @@ class myrefiner
 
         label unrefineInterval_;
 
+        label unrefineInterval_;
+
         label maxCells_;
 
         label nBufferLayers_;
@@ -279,6 +281,9 @@ class myrefiner
 
         //- Read the parameters from dictionary
         void readDict();
+
+        //- Build protectedCells_ for the current grid
+        void buildProtectedCells();
 
         //- Refine cells. Update mesh and fields.
         autoPtr<polyTopoChangeMap> refine(const labelList&);
