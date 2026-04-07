@@ -316,7 +316,7 @@ void Foam::fvMeshTopoChangers::myrefiner::readDict()
 }
 
 
-void Foam::fvMeshTopoChangers::myrefiner::buildProtectedCells()
+void Foam::fvMeshTopoChangers::myrefiner::buildProtectedCells() const
 {
     const fvMesh& mesh = this->mesh();
     const labelList& cellLevel = meshCutter_.cellLevel();
@@ -424,30 +424,16 @@ void Foam::fvMeshTopoChangers::myrefiner::buildProtectedCells()
     // Check cells for 8 corner points
     checkEightAnchorPoints(protectedCells_, nProtected);
 
-    if (returnReduce(nProtected, sumOp<label>()) == 0)
+    nTotProtected_ = returnReduce(nProtected, sumOp<label>());
+    if (nTotProtected == 0)
     {
         protectedCells_.clear();
     }
     else
     {
-        cellSet protectedCells(mesh, "protectedCells", nProtected);
-
-        forAll(protectedCells_, celli)
-        {
-            if (protectedCells_[celli])
-            {
-                protectedCells.insert(celli);
-            }
-        }
-
         Info<< "Detected "
-            << returnReduce(nProtected, sumOp<label>())
+            << nTotProtected
             << " cells that are protected from refinement."
-            << " Writing these to cellSet "
-            << protectedCells.name()
-            << "." << endl;
-
-        protectedCells.write();
     }
 }
 
@@ -1710,6 +1696,7 @@ Foam::fvMeshTopoChangers::myrefiner::myrefiner(fvMesh& mesh, const dictionary& d
     dumpLevel_(false),
     dumpRefinementInfo_(false),
     dumpRefinementFields_(false),
+    dumpProtectedCells_(false),
     nRefinementIterations_(0),
     protectedCells_(mesh.nCells(), 0),
     changedSinceWrite_(false),
@@ -2056,6 +2043,23 @@ bool Foam::fvMeshTopoChangers::myrefiner::write(const bool write) const
         if (dumpRefinementInfo_)
         {
             writeOk = writeOk && cellError_->write();
+        }
+
+        if (dumpProtectedCells_)
+        {
+            cellSet protectedCells(mesh, "protectedCells", nProtected);
+
+            forAll(protectedCells_, celli)
+            {
+                if (protectedCells_[celli])
+                {
+                    protectedCells.insert(celli);
+                }
+            }
+
+            Info<< " Writing cellSet " << protectedCells.name() << endl;
+
+            writeOk = writeOk && protectedCells.write();
         }
 
         return writeOk;

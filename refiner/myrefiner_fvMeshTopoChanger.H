@@ -205,6 +205,9 @@ class myrefiner
         //- Dump processing info (fields)
         bool dumpRefinementFields_;
 
+        //- Dump prtected cells cellSet
+        bool dumpProtectedCells_;
+
         //- Fluxes to map
         HashTable<word> correctFluxes_;
 
@@ -212,7 +215,7 @@ class myrefiner
         label nRefinementIterations_;
 
         //- Protected cells (usually since not hexes)
-        PackedBoolList protectedCells_;
+        mutable PackedBoolList protectedCells_;
 
         //- Has the mesh refinement changed since the last time
         //  the refinement history was written
@@ -284,7 +287,7 @@ class myrefiner
         void readDict();
 
         //- Build protectedCells_ for the current grid
-        void buildProtectedCells();
+        void buildProtectedCells() const;
 
         //- Refine cells. Update mesh and fields.
         autoPtr<polyTopoChangeMap> refine(const labelList&);
