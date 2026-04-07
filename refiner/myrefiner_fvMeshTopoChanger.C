@@ -424,7 +424,7 @@ void Foam::fvMeshTopoChangers::myrefiner::buildProtectedCells() const
     // Check cells for 8 corner points
     checkEightAnchorPoints(protectedCells_, nProtected);
 
-    nTotProtected_ = returnReduce(nProtected, sumOp<label>());
+    const label nTotProtected = returnReduce(nProtected, sumOp<label>());
     if (nTotProtected == 0)
     {
         protectedCells_.clear();
@@ -433,7 +433,22 @@ void Foam::fvMeshTopoChangers::myrefiner::buildProtectedCells() const
     {
         Info<< "Detected "
             << nTotProtected
-            << " cells that are protected from refinement."
+            << " cells that are protected from refinement" << endl;
+
+        if (dumpProtectedCells_)
+        {
+            cellSet protectedCells(mesh, "protectedCells", nProtected);
+            forAll(protectedCells_, celli)
+            {
+                if (protectedCells_[celli])
+                {
+                    protectedCells.insert(celli);
+                }
+            }
+            Info<< " Writing cellSet " << protectedCells.name() << endl;
+            protectedCells.write();
+        }
+
     }
 }
 
@@ -2043,23 +2058,6 @@ bool Foam::fvMeshTopoChangers::myrefiner::write(const bool write) const
         if (dumpRefinementInfo_)
         {
             writeOk = writeOk && cellError_->write();
-        }
-
-        if (dumpProtectedCells_)
-        {
-            cellSet protectedCells(mesh, "protectedCells", nProtected);
-
-            forAll(protectedCells_, celli)
-            {
-                if (protectedCells_[celli])
-                {
-                    protectedCells.insert(celli);
-                }
-            }
-
-            Info<< " Writing cellSet " << protectedCells.name() << endl;
-
-            writeOk = writeOk && protectedCells.write();
         }
 
         return writeOk;
