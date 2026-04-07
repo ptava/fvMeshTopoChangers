@@ -356,83 +356,39 @@ void Foam::fvMeshTopoChangers::myrefiner::buildProtectedCells()
         }
     }
 
-    labelList neiLevel(mesh.nFaces());
-
-    for (label facei = 0; facei < mesh.nInternalFaces(); facei++)
+    // Check cell-side face anchor admissibility
+    forAll(mesh.cells(), celli)
     {
-        neiLevel[facei] = cellLevel[mesh.faceNeighbour()[facei]];
-    }
-
-    for
-    (
-        label facei = mesh.nInternalFaces();
-        facei < mesh.nFaces();
-        facei++
-    )
-    {
-        neiLevel[facei] = cellLevel[mesh.faceOwner()[facei]];
-    }
-    syncTools::swapFaceList(mesh, neiLevel);
-
-
-    boolList protectedFace(mesh.nFaces(), false);
-
-    forAll(mesh.faceOwner(), facei)
-    {
-        const label faceLevel = max
-        (
-            cellLevel[mesh.faceOwner()[facei]],
-            neiLevel[facei]
-        );
-
-        const face& f = mesh.faces()[facei];
-
-        label nAnchors = 0;
-
-        forAll(f, fp)
+        if (protectedCells_.get(celli))
         {
-            if (pointLevel[f[fp]] <= faceLevel)
-            {
-                nAnchors++;
+            continue;
+        }
 
-                if (nAnchors > 4)
+        const cell& cFaces = mesh.cells()[celli];
+        const label cLevel = cellLevel[celli];
+
+        forAll(cFaces, cFacei)
+        {
+            const label facei = cFaces[cFacei];
+            const face& f = mesh.faces()[facei];
+
+            label nFaceAnchors = 0;
+
+            forAll(f, fp)
+            {
+                if (pointLevel[f[fp]] <= cLevel)
                 {
-                    protectedFace[facei] = true;
-                    break;
+                    nFaceAnchors++;
                 }
             }
-        }
-    }
 
-    syncTools::syncFaceList(mesh, protectedFace, orEqOp<bool>());
-
-    for (label facei = 0; facei < mesh.nInternalFaces(); facei++)
-    {
-        if (protectedFace[facei])
-        {
-            if (protectedCells_.set(mesh.faceOwner()[facei], 1))
+            if (nFaceAnchors != 1 && nFaceAnchors != 4)
             {
-                nProtected++;
-            }
-            if (protectedCells_.set(mesh.faceNeighbour()[facei], 1))
-            {
-                nProtected++;
-            }
-        }
-    }
-
-    for
-    (
-        label facei = mesh.nInternalFaces();
-        facei < mesh.nFaces();
-        facei++
-    )
-    {
-        if (protectedFace[facei])
-        {
-            if (protectedCells_.set(mesh.faceOwner()[facei], 1))
-            {
-                nProtected++;
+                if (protectedCells_.set(celli, 1))
+                {
+                    nProtected++;
+                }
+                break;
             }
         }
     }
