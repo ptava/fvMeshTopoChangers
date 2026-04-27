@@ -12,6 +12,8 @@ Working on adaptive mesh refinement in OpenFOAM.
 - [x] Synchronize unrefinement selection across processors (is it really needed?).
 - [x] User can now change run-time parameters in `dynamicMeshDict`
 - [x] New dictionary entry `unrefineInterval` to control how often unrefinement is performed
+- [ ] Address incompatibility with `snappyHexMesh` generated grids (some protected cells are refined, leading to crash of the simulation)
+
 
 ---
 

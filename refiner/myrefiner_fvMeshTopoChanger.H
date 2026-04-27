@@ -72,6 +72,9 @@ Usage
 
         // Write the refinement level as a volScalarField
         dumpLevel       true;
+
+        // Rebuild protected cells after topology changes instead of mapping
+        // rebuildProtectedCells false;
     }
     \endverbatim
 
@@ -145,6 +148,9 @@ Usage
 
         // Write the refinement level as a volScalarField
         dumpLevel       true;
+
+        // Rebuild protected cells after topology changes instead of mapping
+        // rebuildProtectedCells false;
     }
     \endverbatim
 
@@ -205,6 +211,12 @@ class myrefiner
         //- Dump processing info (fields)
         bool dumpRefinementFields_;
 
+        //- Dump prtected cells cellSet
+        bool dumpProtectedCells_;
+
+        //- Rebuild protected cells after topology changes instead of mapping
+        bool rebuildProtectedCells_;
+
         //- Fluxes to map
         HashTable<word> correctFluxes_;
 
@@ -212,11 +224,14 @@ class myrefiner
         label nRefinementIterations_;
 
         //- Protected cells (usually since not hexes)
-        PackedBoolList protectedCells_;
+        mutable PackedBoolList protectedCells_;
 
         //- Has the mesh refinement changed since the last time
         //  the refinement history was written
         mutable bool changedSinceWrite_;
+
+        //- Has the mesh refinement changed protectedCells_
+        mutable bool protectedCellsDirty_;
 
         //- The time index used for updating
         label timeIndex_;
@@ -279,6 +294,9 @@ class myrefiner
 
         //- Read the parameters from dictionary
         void readDict();
+
+        //- Build protectedCells_ for the current grid
+        void buildProtectedCells() const;
 
         //- Refine cells. Update mesh and fields.
         autoPtr<polyTopoChangeMap> refine(const labelList&);

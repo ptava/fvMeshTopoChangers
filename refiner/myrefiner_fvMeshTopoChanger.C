@@ -302,6 +302,8 @@ void Foam::fvMeshTopoChangers::myrefiner::readDict()
 
     dumpLevel_ = Switch(dict_.lookup("dumpLevel"));
     dumpRefinementInfo_ = dict_.lookupOrDefault<bool>("dumpRefinementInfo", false);
+    rebuildProtectedCells_ =
+        dict_.lookupOrDefault<bool>("rebuildProtectedCells", false);
     if (dict_.found("refineScale"))
     {
         refineScale_.reset
@@ -312,6 +314,143 @@ void Foam::fvMeshTopoChangers::myrefiner::readDict()
     if (dumpRefinementInfo_)
     {
         makeDumpField(cellError_, "cellError");
+    }
+}
+
+
+void Foam::fvMeshTopoChangers::myrefiner::buildProtectedCells() const
+{
+    const fvMesh& mesh = this->mesh();
+    const labelList& cellLevel = meshCutter_.cellLevel();
+    const labelList& pointLevel = meshCutter_.pointLevel();
+
+    protectedCells_.clear();
+    protectedCells_.setSize(mesh.nCells());
+
+    label nProtected = 0;
+
+    // Count number of points <= cellLevel
+    labelList nAnchors(mesh.nCells(), 0);
+
+    forAll(mesh.pointCells(), pointi)
+    {
+        const labelList& pCells = mesh.pointCells()[pointi];
+
+        forAll(pCells, i)
+        {
+            const label celli = pCells[i];
+
+            if (!protectedCells_.get(celli))
+            {
+                if (pointLevel[pointi] <= cellLevel[celli])
+                {
+                    nAnchors[celli]++;
+
+                    if (nAnchors[celli] > 8)
+                    {
+                        if (protectedCells_.set(celli,1))
+                        {
+                            nProtected++;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Check cell-side face anchor admissibility
+    forAll(mesh.cells(), celli)
+    {
+        if (protectedCells_.get(celli))
+        {
+            continue;
+        }
+
+        const cell& cFaces = mesh.cells()[celli];
+        const label cLevel = cellLevel[celli];
+
+        forAll(cFaces, cFacei)
+        {
+            const label facei = cFaces[cFacei];
+            const face& f = mesh.faces()[facei];
+
+            label nFaceAnchors = 0;
+
+            forAll(f, fp)
+            {
+                if (pointLevel[f[fp]] <= cLevel)
+                {
+                    nFaceAnchors++;
+                }
+            }
+
+            if (nFaceAnchors != 1 && nFaceAnchors != 4)
+            {
+                if (protectedCells_.set(celli, 1))
+                {
+                    nProtected++;
+                }
+                break;
+            }
+        }
+    }
+
+    // Also protect any cells that are less than hex
+    forAll(mesh.cells(), celli)
+    {
+        const cell& cFaces = mesh.cells()[celli];
+
+        if (cFaces.size() < 6)
+        {
+            if (protectedCells_.set(celli, 1))
+            {
+                nProtected++;
+            }
+        }
+        else
+        {
+            forAll(cFaces, cFacei)
+            {
+                if (mesh.faces()[cFaces[cFacei]].size() < 4)
+                {
+                    if (protectedCells_.set(celli, 1))
+                    {
+                        nProtected++;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // Check cells for 8 corner points
+    checkEightAnchorPoints(protectedCells_, nProtected);
+
+    const label nTotProtected = returnReduce(nProtected, sumOp<label>());
+    if (nTotProtected == 0)
+    {
+        protectedCells_.clear();
+    }
+    else
+    {
+        Info<< "Detected "
+            << nTotProtected
+            << " cells that are protected from refinement" << endl;
+
+        if (dumpProtectedCells_)
+        {
+            cellSet protectedCells(mesh, "protectedCells", nProtected);
+            forAll(protectedCells_, celli)
+            {
+                if (protectedCells_[celli])
+                {
+                    protectedCells.insert(celli);
+                }
+            }
+            Info<< " Writing cellSet " << protectedCells.name() << endl;
+            protectedCells.write();
+        }
+
     }
 }
 
@@ -400,8 +539,13 @@ Foam::fvMeshTopoChangers::myrefiner::refine
         refineUfs(masterFaces, map());
     }
 
+    if (rebuildProtectedCells_)
+    {
+        // Cells selection process requires protectedCells_ to be updated
+        protectedCellsDirty_ = true;
+    }
     // Update numbering of protectedCells_
-    if (protectedCells_.size())
+    else if (protectedCells_.size())
     {
         PackedBoolList newProtectedCell(mesh().nCells());
 
@@ -522,8 +666,13 @@ Foam::fvMeshTopoChangers::myrefiner::unrefine
     // Correct the face velocities for modified faces
     unrefineUfs(faceToSplitPoint, map());
 
+    if (rebuildProtectedCells_)
+    {
+        // Cells selection process requires protectedCells_ to be updated
+        protectedCellsDirty_ = true;
+    }
     // Update numbering of protectedCells_
-    if (protectedCells_.size())
+    else if (protectedCells_.size())
     {
         PackedBoolList newProtectedCell(mesh().nCells());
 
@@ -1095,6 +1244,11 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
 
     // Mark cells that cannot be refined since they would trigger refinement
     // of protected cells (since 2:1 cascade)
+    if (rebuildProtectedCells_ && protectedCellsDirty_)
+    {
+        buildProtectedCells();
+        protectedCellsDirty_ = false;
+    }
     PackedBoolList unrefineableCells;
     calculateProtectedCells(unrefineableCells);
 
@@ -1204,45 +1358,56 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
     }
 
     // Guarantee 2:1 refinement after refinement
+    const labelList baseCandidates(candidates.shrink());
     labelList consistentSet
     (
         meshCutter_.consistentRefinement
         (
-            candidates.shrink(),
+            baseCandidates,
             true               // Add to set to guarantee 2:1
         )
     );
 
-    const label nTotCandidates = returnReduce(candidates.size(), sumOp<label>());
-    if (nTotCandidates == 0)
+    // Remove added cells if they contain protected cells
+    if (!unrefineableCells.empty())
     {
-        Info<< "No suitable cells to refine after filtering." << endl;
-        return labelList();
+        bool hasProtected = false;
+
+        forAll(consistentSet, i)
+        {
+            if (unrefineableCells.get(consistentSet[i]))
+            {
+                hasProtected = true;
+                break;
+            }
+        }
+
+        if (returnReduce(hasProtected, orOp<bool>()))
+        {
+            consistentSet = meshCutter_.consistentRefinement
+            (
+                baseCandidates,
+                false
+            );
+        }
     }
+
+    // Print out info
+    const label nTotCandidates = returnReduce(candidates.size(), sumOp<label>());
+    const label nTot = returnReduce(consistentSet.size(), sumOp<label>());
     const scalar upperLimit = allCellError[0];
     const scalar lowerLimit = allCellError[nTotCandidates-1];
-
-    DebugInfo
-        << "Refinement level range: "
-        << "[" << lowerLimit << " - " << upperLimit << "]" << endl;
-
-    const label nTot = returnReduce(consistentSet.size(), sumOp<label>());
 
     Info
         << "Selected " << nTot
         << " cells for refinement out of " << mesh().globalData().nTotalCells()
         << "." << endl;
 
-    DebugInfo
-        << "Additional cells to guarantee 2:1: "
-        << (nTot - nTotCandidates) << endl;
-
     if (dumpRefinementInfo_)
     {
         setInfo("nTotRefined", nTot);
         setInfo("upperLimit", upperLimit);
         setInfo("lowerLimit", lowerLimit);
-
     }
 
     if (debug)
@@ -1253,8 +1418,10 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
             "refinedCells"
         );
 
-        Info << "Refined cells: " << nTot << endl;
         Info
+            << "Refinement level range "
+            << "[" << lowerLimit << " - " << upperLimit << "]" << endl
+            << "Refined cells: " << nTot << endl
             << "Refined cells set size: "
             << returnReduce(refinedCells_->size(), sumOp<label>())
             << endl;
@@ -1550,189 +1717,19 @@ Foam::fvMeshTopoChangers::myrefiner::myrefiner(fvMesh& mesh, const dictionary& d
     dumpLevel_(false),
     dumpRefinementInfo_(false),
     dumpRefinementFields_(false),
+    dumpProtectedCells_(false),
+    rebuildProtectedCells_(false),
     nRefinementIterations_(0),
     protectedCells_(mesh.nCells(), 0),
     changedSinceWrite_(false),
+    protectedCellsDirty_(false),
     timeIndex_(-1)
 {
     // Read static part of dictionary
     readDict();
 
-    const labelList& cellLevel = meshCutter_.cellLevel();
-    const labelList& pointLevel = meshCutter_.pointLevel();
-
-    // Set cells that should not be refined.
-    // This is currently any cell which does not have 8 anchor points or
-    // uses any face which does not have 4 anchor points.
-    // Note: do not use cellPoint addressing
-
-    // Count number of points <= cellLevel
-    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-    labelList nAnchors(mesh.nCells(), 0);
-
-    label nProtected = 0;
-
-    forAll(mesh.pointCells(), pointi)
-    {
-        const labelList& pCells = mesh.pointCells()[pointi];
-
-        forAll(pCells, i)
-        {
-            const label celli = pCells[i];
-
-            if (!protectedCells_.get(celli))
-            {
-                if (pointLevel[pointi] <= cellLevel[celli])
-                {
-                    nAnchors[celli]++;
-
-                    if (nAnchors[celli] > 8)
-                    {
-                        protectedCells_.set(celli, 1);
-                        nProtected++;
-                    }
-                }
-            }
-        }
-    }
-
-    // Count number of points <= faceLevel
-    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    // Bit tricky since proc face might be one more refined than the owner since
-    // the coupled one is refined.
-
-    {
-        labelList neiLevel(mesh.nFaces());
-
-        for (label facei = 0; facei < mesh.nInternalFaces(); facei++)
-        {
-            neiLevel[facei] = cellLevel[mesh.faceNeighbour()[facei]];
-        }
-
-        for
-        (
-            label facei = mesh.nInternalFaces();
-            facei < mesh.nFaces();
-            facei++
-        )
-        {
-            neiLevel[facei] = cellLevel[mesh.faceOwner()[facei]];
-        }
-        syncTools::swapFaceList(mesh, neiLevel);
-
-
-        boolList protectedFace(mesh.nFaces(), false);
-
-        forAll(mesh.faceOwner(), facei)
-        {
-            const label faceLevel = max
-            (
-                cellLevel[mesh.faceOwner()[facei]],
-                neiLevel[facei]
-            );
-
-            const face& f = mesh.faces()[facei];
-
-            label nAnchors = 0;
-
-            forAll(f, fp)
-            {
-                if (pointLevel[f[fp]] <= faceLevel)
-                {
-                    nAnchors++;
-
-                    if (nAnchors > 4)
-                    {
-                        protectedFace[facei] = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        syncTools::syncFaceList(mesh, protectedFace, orEqOp<bool>());
-
-        for (label facei = 0; facei < mesh.nInternalFaces(); facei++)
-        {
-            if (protectedFace[facei])
-            {
-                protectedCells_.set(mesh.faceOwner()[facei], 1);
-                nProtected++;
-                protectedCells_.set(mesh.faceNeighbour()[facei], 1);
-                nProtected++;
-            }
-        }
-
-        for
-        (
-            label facei = mesh.nInternalFaces();
-            facei < mesh.nFaces();
-            facei++
-        )
-        {
-            if (protectedFace[facei])
-            {
-                protectedCells_.set(mesh.faceOwner()[facei], 1);
-                nProtected++;
-            }
-        }
-
-        // Also protect any cells that are less than hex
-        forAll(mesh.cells(), celli)
-        {
-            const cell& cFaces = mesh.cells()[celli];
-
-            if (cFaces.size() < 6)
-            {
-                if (protectedCells_.set(celli, 1))
-                {
-                    nProtected++;
-                }
-            }
-            else
-            {
-                forAll(cFaces, cFacei)
-                {
-                    if (mesh.faces()[cFaces[cFacei]].size() < 4)
-                    {
-                        if (protectedCells_.set(celli, 1))
-                        {
-                            nProtected++;
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Check cells for 8 corner points
-        checkEightAnchorPoints(protectedCells_, nProtected);
-    }
-
-    if (returnReduce(nProtected, sumOp<label>()) == 0)
-    {
-        protectedCells_.clear();
-    }
-    else
-    {
-        cellSet protectedCells(mesh, "protectedCells", nProtected);
-        forAll(protectedCells_, celli)
-        {
-            if (protectedCells_[celli])
-            {
-                protectedCells.insert(celli);
-            }
-        }
-
-        Info<< "Detected " << returnReduce(nProtected, sumOp<label>())
-            << " cells that are protected from refinement."
-            << " Writing these to cellSet "
-            << protectedCells.name()
-            << "." << endl;
-
-        protectedCells.write();
-    }
+    // Build protected cells
+    buildProtectedCells();
 }
 
 
@@ -1779,7 +1776,17 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
 
     // read dynamic part of dictionary
     refineInterval_ = dict_.lookup<label>("refineInterval");
+    unrefineInterval_ =
+        dict_.lookupOrDefault<label>("unrefineInterval", refineInterval_);
     maxCells_ = dict_.lookup<label>("maxCells");
+
+    const bool wasRebuildingProtectedCells = rebuildProtectedCells_;
+    rebuildProtectedCells_ =
+        dict_.lookupOrDefault<bool>("rebuildProtectedCells", false);
+    if (rebuildProtectedCells_ && !wasRebuildingProtectedCells)
+    {
+        protectedCellsDirty_ = true;
+    }
 
     if (refineInterval_ == 0)
     {
