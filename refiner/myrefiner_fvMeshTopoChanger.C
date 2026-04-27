@@ -302,6 +302,8 @@ void Foam::fvMeshTopoChangers::myrefiner::readDict()
 
     dumpLevel_ = Switch(dict_.lookup("dumpLevel"));
     dumpRefinementInfo_ = dict_.lookupOrDefault<bool>("dumpRefinementInfo", false);
+    rebuildProtectedCells_ =
+        dict_.lookupOrDefault<bool>("rebuildProtectedCells", false);
     if (dict_.found("refineScale"))
     {
         refineScale_.reset
@@ -537,24 +539,26 @@ Foam::fvMeshTopoChangers::myrefiner::refine
         refineUfs(masterFaces, map());
     }
 
+    if (rebuildProtectedCells_)
+    {
+        // Cells selection process requires protectedCells_ to be updated
+        protectedCellsDirty_ = true;
+    }
     // Update numbering of protectedCells_
-    // if (protectedCells_.size())
-    // {
-    //     PackedBoolList newProtectedCell(mesh().nCells());
-    //
-    //     forAll(newProtectedCell, celli)
-    //     {
-    //         const label oldCelli = map().cellMap()[celli];
-    //         newProtectedCell.set(celli, protectedCells_.get(oldCelli));
-    //     }
-    //     protectedCells_.transfer(newProtectedCell);
-    // }
+    else if (protectedCells_.size())
+    {
+        PackedBoolList newProtectedCell(mesh().nCells());
+
+        forAll(newProtectedCell, celli)
+        {
+            const label oldCelli = map().cellMap()[celli];
+            newProtectedCell.set(celli, protectedCells_.get(oldCelli));
+        }
+        protectedCells_.transfer(newProtectedCell);
+    }
 
     // Debug: Check refinement levels (across faces only)
     meshCutter_.checkRefinementLevels(-1, labelList(0));
-
-    // Cells selection process requires protectedCells_ to be updated
-    protectedCellsDirty_ = true;
 
     return map;
 }
@@ -662,27 +666,29 @@ Foam::fvMeshTopoChangers::myrefiner::unrefine
     // Correct the face velocities for modified faces
     unrefineUfs(faceToSplitPoint, map());
 
+    if (rebuildProtectedCells_)
+    {
+        // Cells selection process requires protectedCells_ to be updated
+        protectedCellsDirty_ = true;
+    }
     // Update numbering of protectedCells_
-    // if (protectedCells_.size())
-    // {
-    //     PackedBoolList newProtectedCell(mesh().nCells());
-    //
-    //     forAll(newProtectedCell, celli)
-    //     {
-    //         const label oldCelli = map().cellMap()[celli];
-    //         if (oldCelli >= 0)
-    //         {
-    //             newProtectedCell.set(celli, protectedCells_.get(oldCelli));
-    //         }
-    //     }
-    //     protectedCells_.transfer(newProtectedCell);
-    // }
+    else if (protectedCells_.size())
+    {
+        PackedBoolList newProtectedCell(mesh().nCells());
+
+        forAll(newProtectedCell, celli)
+        {
+            const label oldCelli = map().cellMap()[celli];
+            if (oldCelli >= 0)
+            {
+                newProtectedCell.set(celli, protectedCells_.get(oldCelli));
+            }
+        }
+        protectedCells_.transfer(newProtectedCell);
+    }
 
     // Debug: Check refinement levels (across faces only)
     meshCutter_.checkRefinementLevels(-1, labelList(0));
-
-    // Cells selection process requires protectedCells_ to be updated
-    protectedCellsDirty_ = true;
 
     return map;
 }
@@ -1238,7 +1244,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
 
     // Mark cells that cannot be refined since they would trigger refinement
     // of protected cells (since 2:1 cascade)
-    if (protectedCellsDirty_)
+    if (rebuildProtectedCells_ && protectedCellsDirty_)
     {
         buildProtectedCells();
         protectedCellsDirty_ = false;
@@ -1712,10 +1718,11 @@ Foam::fvMeshTopoChangers::myrefiner::myrefiner(fvMesh& mesh, const dictionary& d
     dumpRefinementInfo_(false),
     dumpRefinementFields_(false),
     dumpProtectedCells_(false),
+    rebuildProtectedCells_(false),
     nRefinementIterations_(0),
     protectedCells_(mesh.nCells(), 0),
     changedSinceWrite_(false),
-    protectedCellsDirty_(true),
+    protectedCellsDirty_(false),
     timeIndex_(-1)
 {
     // Read static part of dictionary
@@ -1772,6 +1779,14 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
     unrefineInterval_ =
         dict_.lookupOrDefault<label>("unrefineInterval", refineInterval_);
     maxCells_ = dict_.lookup<label>("maxCells");
+
+    const bool wasRebuildingProtectedCells = rebuildProtectedCells_;
+    rebuildProtectedCells_ =
+        dict_.lookupOrDefault<bool>("rebuildProtectedCells", false);
+    if (rebuildProtectedCells_ && !wasRebuildingProtectedCells)
+    {
+        protectedCellsDirty_ = true;
+    }
 
     if (refineInterval_ == 0)
     {

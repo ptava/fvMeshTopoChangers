@@ -72,6 +72,9 @@ Usage
 
         // Write the refinement level as a volScalarField
         dumpLevel       true;
+
+        // Rebuild protected cells after topology changes instead of mapping
+        // rebuildProtectedCells false;
     }
     \endverbatim
 
@@ -145,6 +148,9 @@ Usage
 
         // Write the refinement level as a volScalarField
         dumpLevel       true;
+
+        // Rebuild protected cells after topology changes instead of mapping
+        // rebuildProtectedCells false;
     }
     \endverbatim
 
@@ -207,6 +213,9 @@ class myrefiner
 
         //- Dump prtected cells cellSet
         bool dumpProtectedCells_;
+
+        //- Rebuild protected cells after topology changes instead of mapping
+        bool rebuildProtectedCells_;
 
         //- Fluxes to map
         HashTable<word> correctFluxes_;
