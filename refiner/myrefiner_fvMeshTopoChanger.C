@@ -1058,15 +1058,12 @@ void Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
     const scalar upperRefineLevel,
     const scalar maxRefinement,
     const scalarField& vFld,
-    SortableList<scalar>& allCellError
+    scalarField& cellError
 ) const
 {
     // Get error per cell. Is -1 (not to be refined) to >=0 (to be refined,
     // higher more desirable to be refined).
-    scalarField cellError
-    (
-        error(vFld, lowerRefineLevel, upperRefineLevel)
-    );
+    cellError = error(vFld, lowerRefineLevel, upperRefineLevel);
 
     // Store into registry
     if (dumpRefinementFields_)
@@ -1087,21 +1084,6 @@ void Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
         }
     }
 
-    // Create lists of list with size equal to number of processors
-    List<scalarField> gatheredError(Pstream::nProcs());
-
-    // Gather cellError on master processor
-    gatheredError[Pstream::myProcNo()].transfer(cellError);
-    Pstream::gatherList(gatheredError);
-    Pstream::scatterList(gatheredError);
-
-    // Collect all gathered errors and sort
-    allCellError = ListListOps::combine<scalarList>
-    (
-        gatheredError, accessOp<scalarList>()
-    );
-    gatheredError.clear();
-    allCellError.reverseSort();
 }
 
 
@@ -1112,16 +1094,13 @@ void Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
     const scalar upperRefineLevel,
     const scalar maxRefinement,
     const scalarField& vFld,
-    SortableList<scalar>& allCellError,
+    scalarField& cellError,
     const labelList& cells
 ) const
 {
     // Get error per cell. Is -1 (not to be refined) to >0 (to be refined,
     // higher more desirable to be refined).
-    scalarField cellError
-    (
-        error(vFld, cells, lowerRefineLevel, upperRefineLevel)
-    );
+    cellError = error(vFld, cells, lowerRefineLevel, upperRefineLevel);
 
     // Store into registry
     if (dumpRefinementFields_)
@@ -1142,21 +1121,6 @@ void Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
         }
     }
 
-    // Create lists of list with size equal to number of processors
-    List<scalarField> gatheredError(Pstream::nProcs());
-
-    // Gather cellError on master processor
-    gatheredError[Pstream::myProcNo()].transfer(cellError);
-    Pstream::gatherList(gatheredError);
-    Pstream::scatterList(gatheredError);
-
-    // Collect all gathered errors and sort
-    allCellError = ListListOps::combine<scalarList>
-    (
-        gatheredError, accessOp<scalarList>()
-    );
-    gatheredError.clear();
-    allCellError.reverseSort();
 }
 
 
@@ -1164,7 +1128,7 @@ Foam::scalar Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
 (
     PackedBoolList& candidateCells,
     const dictionary& refineDict,
-    SortableList<scalar>& allCellError
+    scalarField& cellError
 ) const
 {
     const word fieldName(refineDict.lookup("field"));
@@ -1205,7 +1169,7 @@ Foam::scalar Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
             upperRefineLevel,
             maxRefinement,
             vFld,
-            allCellError,
+            cellError,
             findCellZone(refineDict.lookup("cellZone"))
         );
     }
@@ -1219,7 +1183,7 @@ Foam::scalar Foam::fvMeshTopoChangers::myrefiner::selectRefineCandidates
             upperRefineLevel,
             maxRefinement,
             vFld,
-            allCellError
+            cellError
         );
     }
 
@@ -1232,7 +1196,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
     const label maxCells,
     const label maxRefinement,
     const PackedBoolList& candidateCells,
-    const SortableList<scalar>& allCellError,
+    const scalarField& cellError,
     const scalar& scale
 ) const
 {
@@ -1267,6 +1231,8 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
 
     // Collect all cells
     DynamicList<label> candidates(nLocalCandidates);
+    scalar upperLimitLocal = -GREAT;
+    scalar lowerLimitLocal = GREAT;
 
     // Number of cells to select
     label nToSelect = min(nCandidates, nTotToRefine);
@@ -1297,66 +1263,141 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
         forAll(candidateCells, celli)
         {
             const bool isCandidate = candidateCells.get(celli);
-            const bool isOk = !hasUnrefineable || !unrefineableCells.get(celli);
+            const bool isOk =
+                !hasUnrefineable || !unrefineableCells.get(celli);
+
             if (isCandidate && isOk)
             {
                 candidates.append(celli);
+                upperLimitLocal = max(upperLimitLocal, cellError[celli]);
+                lowerLimitLocal = min(lowerLimitLocal, cellError[celli]);
             }
         }
     }
     else
     {
         // Otherwise select top nToSelect cells
+        DynamicList<label> eligibleCells(nLocalCandidates);
+        DynamicList<scalar> eligibleErrors(nLocalCandidates);
+
+        forAll(candidateCells, celli)
+        {
+            const bool isCandidate = candidateCells.get(celli);
+            const bool isOk =
+                !hasUnrefineable || !unrefineableCells.get(celli);
+
+            if (isCandidate && isOk)
+            {
+                eligibleCells.append(celli);
+                eligibleErrors.append(cellError[celli]);
+            }
+        }
+
+        const labelList eligibleCellList(eligibleCells.shrink());
+        const scalarField eligibleErrorList(eligibleErrors.shrink());
+
+        SortableList<scalar> sortedEligibleErrors(eligibleErrorList);
+        sortedEligibleErrors.reverseSort();
+
+        const label nLocalTop =
+            min(sortedEligibleErrors.size(), nToSelect);
+
         if (Pstream::parRun())
         {
-            const label myproc = Pstream::myProcNo();
-            globalIndex globalNumbering(mesh().nCells());
-            label nToSelectGlobal = 0;
-            for (label i = 0; i < allCellError.size(); ++i)
+            const globalIndex globalNumbering(mesh().nCells());
+            scalarField localTopErrors(nLocalTop);
+            labelList localTopGlobalCells(nLocalTop);
+
+            for (label i = 0; i < nLocalTop; ++i)
             {
-                const label& globalCelli = allCellError.indices()[i];
-                const label proci = globalNumbering.whichProcID(globalCelli);
-                label localAccepted = 0;
-                if (proci == myproc)
-                {
-                    const label celli = globalNumbering.toLocal(globalCelli);
-                    const bool isCandidate = candidateCells.get(celli);
-                    const bool isOk = !hasUnrefineable || !unrefineableCells.get(celli);
+                const label eligiblei = sortedEligibleErrors.indices()[i];
 
-                    if (isCandidate && isOk)
-                    {
-                        candidates.append(celli);
-                        localAccepted++;
-                    }
+                localTopErrors[i] = sortedEligibleErrors[i];
+                localTopGlobalCells[i] =
+                    globalNumbering.toGlobal(eligibleCellList[eligiblei]);
+            }
+
+            List<scalarField> gatheredTopErrors(Pstream::nProcs());
+            List<labelList> gatheredTopGlobalCells(Pstream::nProcs());
+
+            gatheredTopErrors[Pstream::myProcNo()].transfer(localTopErrors);
+            gatheredTopGlobalCells[Pstream::myProcNo()].transfer
+            (
+                localTopGlobalCells
+            );
+
+            Pstream::gatherList(gatheredTopErrors);
+            Pstream::scatterList(gatheredTopErrors);
+            Pstream::gatherList(gatheredTopGlobalCells);
+            Pstream::scatterList(gatheredTopGlobalCells);
+
+            const scalarField topErrors
+            (
+                ListListOps::combine<scalarList>
+                (
+                    gatheredTopErrors,
+                    accessOp<scalarList>()
+                )
+            );
+            const labelList topGlobalCells
+            (
+                ListListOps::combine<labelList>
+                (
+                    gatheredTopGlobalCells,
+                    accessOp<labelList>()
+                )
+            );
+
+            SortableList<scalar> sortedTopErrors(topErrors);
+            sortedTopErrors.reverseSort();
+
+            labelHashSet selectedGlobalCells(2*nToSelect);
+
+            for
+            (
+                label i = 0;
+                i < sortedTopErrors.size()
+             && selectedGlobalCells.size() < nToSelect;
+                ++i
+            )
+            {
+                const label selectedi = sortedTopErrors.indices()[i];
+
+                if (selectedGlobalCells.insert(topGlobalCells[selectedi]))
+                {
+                    upperLimitLocal =
+                        max(upperLimitLocal, sortedTopErrors[i]);
+                    lowerLimitLocal =
+                        min(lowerLimitLocal, sortedTopErrors[i]);
                 }
-                // Sum up number of accepted cells
-                const label totalAccepted = returnReduce(localAccepted, sumOp<label>());
-                nToSelectGlobal += totalAccepted;
+            }
 
-                if (nToSelectGlobal >= nToSelect)
+            forAll(eligibleCellList, i)
+            {
+                if
+                (
+                    selectedGlobalCells.found
+                    (
+                        globalNumbering.toGlobal(eligibleCellList[i])
+                    )
+                )
                 {
-                    break;
+                    candidates.append(eligibleCellList[i]);
                 }
             }
         }
         else
         {
-            for
-            (
-                label i = 0;
-                i < allCellError.size() && candidates.size() < nToSelect;
-                ++i
-            )
+            for (label i = 0; i < nLocalTop; ++i)
             {
-                const label& celli = allCellError.indices()[i];
-                const bool isCandidate = candidateCells.get(celli);
-                const bool isOk =
-                    !hasUnrefineable || !unrefineableCells.get(celli);
+                const label eligiblei = sortedEligibleErrors.indices()[i];
+                const label celli = eligibleCellList[eligiblei];
 
-                if (isCandidate && isOk)
-                {
-                    candidates.append(celli);
-                }
+                candidates.append(celli);
+                upperLimitLocal =
+                    max(upperLimitLocal, sortedEligibleErrors[i]);
+                lowerLimitLocal =
+                    min(lowerLimitLocal, sortedEligibleErrors[i]);
             }
         }
     }
@@ -1407,8 +1448,10 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
     }
 
     const label nTot = returnReduce(consistentSet.size(), sumOp<label>());
-    const scalar upperLimit = allCellError[0];
-    const scalar lowerLimit = allCellError[nTotCandidates-1];
+    const scalar upperLimit =
+        returnReduce(upperLimitLocal, maxOp<scalar>());
+    const scalar lowerLimit =
+        returnReduce(lowerLimitLocal, minOp<scalar>());
 
     Info
         << "Selected " << nTot
@@ -1824,7 +1867,7 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
         );
     }
 
-    SortableList<scalar> sortedError;
+    scalarField cellError;
     scalar scale = currentScale();
 
     // Note: cannot refine at time 0 since no V0 present since mesh not
@@ -1860,7 +1903,7 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
                     (
                         refineCells,
                         refinementRegions.subDict(iter().keyword()),
-                        sortedError
+                        cellError
                     ),
                     maxRefinement
                 );
@@ -1872,7 +1915,7 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
             (
                 refineCells,
                 dict_,
-                sortedError
+                cellError
             );
         }
 
@@ -1925,7 +1968,7 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
                     maxCells_,
                     maxRefinement,
                     refinableCells,
-                    sortedError,
+                    cellError,
                     scale
                 )
             );

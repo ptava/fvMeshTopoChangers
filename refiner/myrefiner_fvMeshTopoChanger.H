@@ -364,7 +364,7 @@ class myrefiner
                 const scalar upperRefineLevel,
                 const scalar maxRefinement,
                 const scalarField& vFld,
-                SortableList<scalar>& allCellError
+                scalarField& cellError
             ) const;
 
             //- Select candidate cells for refinement
@@ -375,7 +375,7 @@ class myrefiner
                 const scalar upperRefineLevel,
                 const scalar maxRefinement,
                 const scalarField& vFld,
-                SortableList<scalar>& allCellError,
+                scalarField& cellError,
                 const labelList& cells
             ) const;
 
@@ -384,7 +384,7 @@ class myrefiner
             (
                 PackedBoolList& candidateCell,
                 const dictionary& refineDict,
-                SortableList<scalar>& allCellError
+                scalarField& cellError
             ) const;
 
             //- Subset candidate cells for refinement
@@ -393,7 +393,7 @@ class myrefiner
                 const label maxCells,
                 const label maxRefinement,
                 const PackedBoolList& candidateCell,
-                const SortableList<scalar>& allCellError,
+                const scalarField& cellError,
                 const scalar& scale
             ) const;
 
