@@ -58,9 +58,8 @@ Usage
         // Stop refinement if maxCells reached
         maxCells        200000;
 
-        // Flux field and corresponding velocity field. Fluxes on changed
-        // faces get recalculated by interpolating the velocity. Use 'none'
-        // on surfaceScalarFields that do not need to be reinterpolated.
+        // Surface scalar fields to check during refinement. Use 'none' to
+        // leave a field mapped by topology change, or 'NaN' to flag it.
         correctFluxes
         (
             (phi none)
@@ -73,7 +72,8 @@ Usage
         // Write the refinement level as a volScalarField
         dumpLevel       true;
 
-        // Rebuild protected cells after topology changes instead of mapping
+        // By default protected cells are mapped after topology changes.
+        // Set true to rebuild them from the updated mesh instead.
         // rebuildProtectedCells false;
     }
     \endverbatim
@@ -134,9 +134,8 @@ Usage
         // Stop refinement if maxCells reached
         maxCells        200000;
 
-        // Flux field and corresponding velocity field. Fluxes on changed
-        // faces get recalculated by interpolating the velocity. Use 'none'
-        // on surfaceScalarFields that do not need to be reinterpolated.
+        // Surface scalar fields to check during refinement. Use 'none' to
+        // leave a field mapped by topology change, or 'NaN' to flag it.
         correctFluxes
         (
             (phi none)
@@ -149,7 +148,8 @@ Usage
         // Write the refinement level as a volScalarField
         dumpLevel       true;
 
-        // Rebuild protected cells after topology changes instead of mapping
+        // By default protected cells are mapped after topology changes.
+        // Set true to rebuild them from the updated mesh instead.
         // rebuildProtectedCells false;
     }
     \endverbatim

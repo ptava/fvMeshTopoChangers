@@ -12,7 +12,16 @@ Working on adaptive mesh refinement in OpenFOAM.
 - [x] Synchronize unrefinement selection across processors (is it really needed?).
 - [x] User can now change run-time parameters in `dynamicMeshDict`
 - [x] New dictionary entry `unrefineInterval` to control how often unrefinement is performed
-- [ ] Address incompatibility with `snappyHexMesh` generated grids (some protected cells are refined, leading to crash of the simulation)
+- [x] Address incompatibility with `snappyHexMesh` generated grids (some protected cells are refined, leading to crash of the simulation)
+
+By default, `protectedCells_` are mapped after local topology changes. Set
+`rebuildProtectedCells true` to rebuild the protected-cell list from the
+updated mesh instead of mapping it.
+
+## TODO
+
+1. Fix `myrefiner::distribute()` so redistribution also handles `protectedCells_`: distribute the cached list or force `protectedCellsDirty_ = true` after `meshCutter_.distribute(map)`.
+2. Reduce parallel selection cost by avoiding full global `cellError` gather/sort and removing the per-candidate `returnReduce` inside the ranked selection loop.
 
 
 ---
@@ -76,12 +85,14 @@ Working on adaptive mesh refinement in OpenFOAM.
 > [!NOTE]
 > - `cellZone` definition for refinement/unrefinement operations is supported.
 > 
-> - removed the usage of `extendMarkedCells` function, in my believe it is not necessary anymore: preprocess input field to expand focus region of refinement criteria to avoid abrupt refinements. Now `nBufferLayers` isn't used anymore, could be used in `meshCutter.consistentRefinement` logic to expand the 2:1 refinement buffer.
+> - `nBufferLayers` is intentionally not used at the moment: the `extendMarkedCells` step has been disabled because the current selection relies on `meshCutter.consistentRefinement` for 2:1 consistency.
 > 
 > - If number of selected cells does not exceed the available budget, we have a check on maximum level of refinement.
 > 
 > - Selected cells for refinement are filtered by the scale value defined by user. So in case we have available spots for all "filtered" cells, we still have to select them based on the sorted field values.
 > 
+> - Refinement threshold checks are inclusive by design: `cellError >= 0` refines cells exactly on `lowerRefineLevel` or `upperRefineLevel`.
+>
 > - sorting part of the algorithm and candidates selection (in parallel) are not computationally efficient
 > 
 > - Candidates cells for unrefinement are now selected based on the field values, with additional synchronization across processors.
@@ -99,10 +110,11 @@ Working on adaptive mesh refinement in OpenFOAM.
 > 
 > - Available `volScalarField` associated with `cellError` for additional post-processing via `dumpRefinementFields` flag.
 > 
+> - Available `protectedCells` cellSet via `dumpProtectedCells` flag.
+> 
 > - Available `labelIOList` of refined and unrefined cells with debugging flag
 > 
 > - Need to check the behaviour with `refinementRegions` definition (which changed in later version of OpenFOAM)
 > 
 > - Experienced instabilities with time-step adaptation via `adjustTimeStep`(-> `maxCo`) leading to simulation crash. Need to change the logic to avoid abrupt changes or fix directly the time-step
 ---
-

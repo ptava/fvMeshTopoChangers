@@ -302,6 +302,10 @@ void Foam::fvMeshTopoChangers::myrefiner::readDict()
 
     dumpLevel_ = Switch(dict_.lookup("dumpLevel"));
     dumpRefinementInfo_ = dict_.lookupOrDefault<bool>("dumpRefinementInfo", false);
+    dumpRefinementFields_ =
+        dict_.lookupOrDefault<bool>("dumpRefinementFields", false);
+    dumpProtectedCells_ =
+        dict_.lookupOrDefault<bool>("dumpProtectedCells", false);
     rebuildProtectedCells_ =
         dict_.lookupOrDefault<bool>("rebuildProtectedCells", false);
     if (dict_.found("refineScale"))
@@ -311,7 +315,7 @@ void Foam::fvMeshTopoChangers::myrefiner::readDict()
             Function1<scalar>::New("refineScale", dimTime, dimless, dict_).ptr()
         );
     }
-    if (dumpRefinementInfo_)
+    if (dumpRefinementFields_)
     {
         makeDumpField(cellError_, "cellError");
     }
@@ -1394,6 +1398,14 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
 
     // Print out info
     const label nTotCandidates = returnReduce(candidates.size(), sumOp<label>());
+    if (nTotCandidates == 0)
+    {
+        Info<< "No cells selected for refinement after protected-cell filtering."
+            << endl;
+
+        return labelList();
+    }
+
     const label nTot = returnReduce(consistentSet.size(), sumOp<label>());
     const scalar upperLimit = allCellError[0];
     const scalar lowerLimit = allCellError[nTotCandidates-1];
@@ -1779,6 +1791,17 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
     unrefineInterval_ =
         dict_.lookupOrDefault<label>("unrefineInterval", refineInterval_);
     maxCells_ = dict_.lookup<label>("maxCells");
+    dumpRefinementInfo_ =
+        dict_.lookupOrDefault<bool>("dumpRefinementInfo", false);
+    dumpRefinementFields_ =
+        dict_.lookupOrDefault<bool>("dumpRefinementFields", false);
+    dumpProtectedCells_ =
+        dict_.lookupOrDefault<bool>("dumpProtectedCells", false);
+
+    if (dumpRefinementFields_)
+    {
+        makeDumpField(cellError_, "cellError");
+    }
 
     const bool wasRebuildingProtectedCells = rebuildProtectedCells_;
     rebuildProtectedCells_ =
@@ -2070,7 +2093,7 @@ bool Foam::fvMeshTopoChangers::myrefiner::write(const bool write) const
 
         changedSinceWrite_ = false;
 
-        if (dumpRefinementInfo_)
+        if (dumpRefinementFields_ && cellError_.valid())
         {
             writeOk = writeOk && cellError_->write();
         }
