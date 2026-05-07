@@ -13,6 +13,7 @@ Working on adaptive mesh refinement in OpenFOAM.
 - [x] User can now change run-time parameters in `dynamicMeshDict`
 - [x] New dictionary entry `unrefineInterval` to control how often unrefinement is performed
 - [x] Address incompatibility with `snappyHexMesh` generated grids (some protected cells are refined, leading to crash of the simulation)
+- [x] Reduce parallel refinement selection cost by keeping `cellError` local and gathering only compact top-ranked candidates.
 
 By default, `protectedCells_` are mapped after local topology changes. Set
 `rebuildProtectedCells true` to rebuild the protected-cell list from the
@@ -21,7 +22,6 @@ updated mesh instead of mapping it.
 ## TODO
 
 1. Fix `myrefiner::distribute()` so redistribution also handles `protectedCells_`: distribute the cached list or force `protectedCellsDirty_ = true` after `meshCutter_.distribute(map)`.
-2. Reduce parallel selection cost by avoiding full global `cellError` gather/sort and removing the per-candidate `returnReduce` inside the ranked selection loop.
 
 
 ---
