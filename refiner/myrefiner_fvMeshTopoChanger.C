@@ -1801,8 +1801,7 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
     // Re-read dictionary. Chosen since usually -small so trivial amount
     // of time compared to actual refinement. Also very useful to be able
     // to modify on-the-fly.
-    dictionary dict_
-    (
+    dict_ = 
         IOdictionary
         (
             IOobject
@@ -1814,8 +1813,7 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
                 IOobject::NO_WRITE,
                 false
             )
-        ).subDict("topoChanger")
-    );
+        ).subDict("topoChanger");
 
     // Only refine on the first call in a time-step
     if (timeIndex_ != mesh().time().timeIndex())
