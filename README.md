@@ -15,10 +15,6 @@ Working on adaptive mesh refinement in OpenFOAM.
 - [x] Address incompatibility with `snappyHexMesh` generated grids (some protected cells are refined, leading to crash of the simulation)
 - [x] Reduce parallel refinement selection cost by keeping `cellError` local and gathering only compact top-ranked candidates.
 
-By default, `protectedCells_` are mapped after local topology changes. Set
-`rebuildProtectedCells true` to rebuild the protected-cell list from the
-updated mesh instead of mapping it.
-
 ## TODO
 
 1. Fix `myrefiner::distribute()` so redistribution also handles `protectedCells_`: distribute the cached list or force `protectedCellsDirty_ = true` after `meshCutter_.distribute(map)`.
@@ -117,4 +113,7 @@ updated mesh instead of mapping it.
 > - Need to check the behaviour with `refinementRegions` definition (which changed in later version of OpenFOAM)
 > 
 > - Experienced instabilities with time-step adaptation via `adjustTimeStep`(-> `maxCo`) leading to simulation crash. Need to change the logic to avoid abrupt changes or fix directly the time-step
+
+> - By default, `protectedCells_` are mapped after local topology changes. Set `rebuildProtectedCells true` to rebuild the protected-cell list from the updated mesh instead of mapping it.
+
 ---
