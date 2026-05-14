@@ -85,7 +85,10 @@ Usage
         type            myrefiner;
 
         // How often to refine
-        refineInterval  1;
+        refineInterval  4;
+
+        // How many refinement steps before unrefinement
+        unrefineInterval 1;
 
         refinementRegions
         {

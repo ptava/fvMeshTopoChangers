@@ -261,7 +261,7 @@ void Foam::fvMeshTopoChangers::myrefiner::readDict()
 {
     refineInterval_ = dict_.lookup<label>("refineInterval");
     unrefineInterval_ =
-        dict_.lookupOrDefault<label>("unrefineInterval", refineInterval_);
+        dict_.lookupOrDefault<label>("unrefineInterval", 1);
 
     if (refineInterval_ < 0)
     {
@@ -1830,7 +1830,7 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
     // read dynamic part of dictionary
     refineInterval_ = dict_.lookup<label>("refineInterval");
     unrefineInterval_ =
-        dict_.lookupOrDefault<label>("unrefineInterval", refineInterval_);
+        dict_.lookupOrDefault<label>("unrefineInterval", 1);
     maxCells_ = dict_.lookup<label>("maxCells");
     dumpRefinementInfo_ =
         dict_.lookupOrDefault<bool>("dumpRefinementInfo", false);
