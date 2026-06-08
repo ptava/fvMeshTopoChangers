@@ -1226,6 +1226,20 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
     const label nLocalUnrefineable = count(unrefineableCells, 1);
     const label nUnrefineable = returnReduce(nLocalUnrefineable, sumOp<label>());
 
+    if (debug)
+    {
+        const label nProtected = returnReduce
+        (
+            count(protectedCells_, 1),
+            sumOp<label>()
+        );
+
+        Info<< "Protected refinement cells:"
+            << " baseProtected=" << nProtected
+            << ", unrefineableWithBuffer=" << nUnrefineable
+            << endl;
+    }
+
     // Cache if unrefineableCells is empty
     const bool hasUnrefineable = !unrefineableCells.empty();
 
@@ -1627,13 +1641,34 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
     syncTools::syncPointList(mesh(), pointHasMarked, orEqOp<bool>(), hasMarked);
     syncTools::syncPointList(mesh(), pointAboveLevel, orEqOp<bool>(), aboveLevel);
 
+    label nBlockedMarked = 0;
+    label nBlockedAboveLevel = 0;
+    label nBlockedBoth = 0;
+    label nCandidates = 0;
+
     forAll(splitPoints, i)
     {
         const label pointi = splitPoints[i];
+        const bool blockedMarked = pointHasMarked[pointi];
+        const bool blockedAboveLevel = pointAboveLevel[pointi];
 
-        if (!pointHasMarked[pointi] && !pointAboveLevel[pointi])
+        if (blockedMarked)
+        {
+            nBlockedMarked++;
+        }
+        if (blockedAboveLevel)
+        {
+            nBlockedAboveLevel++;
+        }
+        if (blockedMarked && blockedAboveLevel)
+        {
+            nBlockedBoth++;
+        }
+
+        if (!blockedMarked && !blockedAboveLevel)
         {
             newSplitPoints.append(pointi);
+            nCandidates++;
         }
     }
 
@@ -1660,6 +1695,26 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
         << " split points out of a possible "
         << returnReduce(splitPoints.size(), sumOp<label>())
         << "." << endl;
+
+    if (debug)
+    {
+        const label nCandidatesGlobal =
+            returnReduce(nCandidates, sumOp<label>());
+        const label nSelectedGlobal =
+            returnReduce(consistentSet.size(), sumOp<label>());
+
+        Info<< "Unrefine split point filter:"
+            << " blockedByMarked="
+            << returnReduce(nBlockedMarked, sumOp<label>())
+            << ", blockedByField="
+            << returnReduce(nBlockedAboveLevel, sumOp<label>())
+            << ", blockedByBoth="
+            << returnReduce(nBlockedBoth, sumOp<label>())
+            << ", beforeConsistency=" << nCandidatesGlobal
+            << ", rejectedByConsistency="
+            << nCandidatesGlobal - nSelectedGlobal
+            << endl;
+    }
 
     return consistentSet;
 }
