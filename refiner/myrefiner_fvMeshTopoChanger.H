@@ -194,7 +194,7 @@ class myrefiner
         //- Refinement control dictionary
         dictionary dict_;
 
-        label refineInterval_;
+        autoPtr<Function1<scalar>> refineInterval_;
 
         label unrefineInterval_;
 
@@ -287,6 +287,9 @@ class myrefiner
 
         // Current scale value
         scalar currentScale() const;
+
+        // Current refinement interval
+        label currentRefineInterval() const;
 
         //- Count set/unset elements in packedlist.
         static label count(const PackedBoolList&, const unsigned int);

@@ -112,6 +112,26 @@ Foam::scalar Foam::fvMeshTopoChangers::myrefiner::currentScale() const
     return scale;
 }
 
+
+Foam::label Foam::fvMeshTopoChangers::myrefiner::currentRefineInterval() const
+{
+    const scalar intervalValue =
+        refineInterval_->value(mesh().time().value());
+
+    const label interval = label(intervalValue + 0.5);
+
+    if (interval < 0 || mag(intervalValue - scalar(interval)) > SMALL)
+    {
+        FatalErrorInFunction
+            << "Refinement interval must be a non-negative integer" << endl
+            << "    Current value: " << intervalValue << endl
+            << abort(FatalError);
+    }
+
+    return interval;
+}
+
+
 Foam::label Foam::fvMeshTopoChangers::myrefiner::count
 (
     const PackedBoolList& l,
@@ -259,18 +279,13 @@ void Foam::fvMeshTopoChangers::myrefiner::calculateProtectedCells
 
 void Foam::fvMeshTopoChangers::myrefiner::readDict()
 {
-    refineInterval_ = dict_.lookup<label>("refineInterval");
+    refineInterval_.reset
+    (
+        Function1<scalar>::New("refineInterval", dimTime, dimless, dict_).ptr()
+    );
+
     unrefineInterval_ =
         dict_.lookupOrDefault<label>("unrefineInterval", 1);
-
-    if (refineInterval_ < 0)
-    {
-        FatalIOErrorInFunction(dict_)
-            << "Illegal refineInterval " << refineInterval_ << nl
-            << "The refineInterval setting in the dynamicMeshDict should"
-            << " be >= 1." << nl
-            << exit(FatalIOError);
-    }
 
     maxCells_ = dict_.lookup<label>("maxCells");
 
@@ -1883,7 +1898,10 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
     bool hasChanged = false;
 
     // read dynamic part of dictionary
-    refineInterval_ = dict_.lookup<label>("refineInterval");
+    refineInterval_.reset
+    (
+        Function1<scalar>::New("refineInterval", dimTime, dimless, dict_).ptr()
+    );
     unrefineInterval_ =
         dict_.lookupOrDefault<label>("unrefineInterval", 1);
     maxCells_ = dict_.lookup<label>("maxCells");
@@ -1907,7 +1925,9 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
         protectedCellsDirty_ = true;
     }
 
-    if (refineInterval_ == 0)
+    const label refineInterval = currentRefineInterval();
+
+    if (refineInterval == 0)
     {
         return hasChanged;
     }
@@ -1928,7 +1948,7 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
     if
     (
         mesh().time().timeIndex() > 0
-     && mesh().time().timeIndex() % refineInterval_ == 0
+     && mesh().time().timeIndex() % refineInterval == 0
      && scale > 0
     )
     {
