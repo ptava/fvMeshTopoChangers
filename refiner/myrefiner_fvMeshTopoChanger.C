@@ -115,20 +115,29 @@ Foam::scalar Foam::fvMeshTopoChangers::myrefiner::currentScale() const
 
 Foam::label Foam::fvMeshTopoChangers::myrefiner::currentRefineInterval() const
 {
-    const scalar intervalValue =
+    const scalar rawInterval =
         refineInterval_->value(mesh().time().value());
 
-    const label interval = label(intervalValue + 0.5);
-
-    if (interval < 0 || mag(intervalValue - scalar(interval)) > SMALL)
+    if (rawInterval < 0)
     {
         FatalErrorInFunction
-            << "Refinement interval must be a non-negative integer" << endl
-            << "    Current value: " << intervalValue << endl
+            << "refineInterval must evaluate to a non-negative value" << nl
+            << "    Time: " << mesh().time().value() << nl
+            << "    Current value: " << rawInterval << nl
             << abort(FatalError);
     }
 
-    return interval;
+    // Function1 returns a scalar; use the nearest integer time-step interval.
+    const scalar roundedInterval = round(rawInterval);
+
+    if (debug && mag(rawInterval - roundedInterval) > SMALL)
+    {
+        Info<< "refineInterval value " << rawInterval
+            << " rounded to " << label(roundedInterval)
+            << " at time " << mesh().time().value() << endl;
+    }
+
+    return label(roundedInterval);
 }
 
 
