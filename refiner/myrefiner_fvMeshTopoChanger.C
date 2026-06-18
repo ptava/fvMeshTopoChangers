@@ -34,6 +34,7 @@ License
 #include "ListListOps.H"
 #include "globalIndex.H"
 #include "uniformDimensionedFields.H"
+#include "clockTime.H"
 
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
@@ -1877,6 +1878,9 @@ Foam::fvMeshTopoChangers::myrefiner::~myrefiner()
 
 bool Foam::fvMeshTopoChangers::myrefiner::update()
 {
+    clockTime wallClock;
+    const scalar cpuStart = mesh().time().elapsedCpuTime();
+
     // Re-read dictionary. Chosen since usually -small so trivial amount
     // of time compared to actual refinement. Also very useful to be able
     // to modify on-the-fly.
@@ -2005,10 +2009,10 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
         // should be passed to meshCutter_.consistentRefinement
         // Extend with a buffer layer to prevent neighbouring points
         // being unrefined.
-        // for (label i = 0; i < nBufferLayers_; i++)
-        // {
-        //     extendMarkedCells(refineCells);
-        // }
+        for (label i = 0; i < nBufferLayers_; i++)
+        {
+            extendMarkedCells(refineCells);
+        }
 
         PackedBoolList refinableCells(refineCells);
 
@@ -2148,6 +2152,14 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
     if (hasChanged)
     {
         changedSinceWrite_ = true;
+    }
+
+    if (debug && hasChanged)
+    {
+        Info<< typeName
+            << ": update timing at time " << mesh().time().name()
+            << " (cpu " << mesh().time().elapsedCpuTime() - cpuStart
+            << " s, wall " << wallClock.elapsedTime() << " s)" << endl;
     }
 
     return hasChanged;
