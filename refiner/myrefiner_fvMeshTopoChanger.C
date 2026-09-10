@@ -69,7 +69,7 @@ void Foam::fvMeshTopoChangers::myrefiner::makeDumpField
             (
                 name,
                 this->mesh().time().name(),
-                this->mesh().thisDb(),
+                this->mesh(),
                 IOobject::NO_READ,
                 IOobject::AUTO_WRITE
             ),
@@ -234,7 +234,7 @@ void Foam::fvMeshTopoChangers::myrefiner::calculateProtectedCells
             }
         }
 
-        syncTools::syncFaceList(mesh(), seedFace, orEqOp<bool>());
+        syncTools::syncFaceList(mesh(), seedFace, orEqOp());
 
 
         // Extend unrefineableCells
@@ -279,7 +279,7 @@ void Foam::fvMeshTopoChangers::myrefiner::calculateProtectedCells
             }
         }
 
-        if (!returnReduce(hasExtended, orOp<bool>()))
+        if (!returnReduce(hasExtended, orOp()))
         {
             break;
         }
@@ -455,7 +455,7 @@ void Foam::fvMeshTopoChangers::myrefiner::buildProtectedCells() const
     // Check cells for 8 corner points
     checkEightAnchorPoints(protectedCells_, nProtected);
 
-    const label nTotProtected = returnReduce(nProtected, sumOp<label>());
+    const label nTotProtected = returnReduce(nProtected, sumOp());
     if (nTotProtected == 0)
     {
         protectedCells_.clear();
@@ -503,7 +503,7 @@ Foam::fvMeshTopoChangers::myrefiner::refine
     autoPtr<polyTopoChangeMap> map = meshMod.changeMesh(mesh());
 
     Info<< "Refined from "
-        << returnReduce(map().nOldCells(), sumOp<label>())
+        << returnReduce(map().nOldCells(), sumOp())
         << " to " << mesh().globalData().nTotalCells() << " cells." << endl;
 
     if (debug)
@@ -642,7 +642,7 @@ Foam::fvMeshTopoChangers::myrefiner::unrefine
     autoPtr<polyTopoChangeMap> map = meshMod.changeMesh(mesh());
 
     // Info of unrefinement operation
-    const label nCellsBefore = returnReduce(map().nOldCells(), sumOp<label>());
+    const label nCellsBefore = returnReduce(map().nOldCells(), sumOp());
     const label nCellsAfter = mesh().globalData().nTotalCells();
     const label nUnrefinedCells = nCellsBefore - nCellsAfter;
 
@@ -682,7 +682,7 @@ Foam::fvMeshTopoChangers::myrefiner::unrefine
 
         Info 
             << "Unrefined cells set size: "
-            << returnReduce(unrefinedCells_->size(), sumOp<label>())
+            << returnReduce(unrefinedCells_->size(), sumOp())
             << endl;
     }
 
@@ -890,7 +890,7 @@ void Foam::fvMeshTopoChangers::myrefiner::refineUfs
             }
 
             // Recalculate new boundary faces.
-            surfaceVectorField::Boundary& UfBf = Uf.boundaryFieldRef();
+            surfaceVectorField::BoundaryField& UfBf = Uf.boundaryFieldRef();
             forAll(UfBf, patchi)
             {
                 fvsPatchVectorField& patchUf = UfBf[patchi];
@@ -930,9 +930,9 @@ void Foam::fvMeshTopoChangers::myrefiner::refineUfs
                 else
                 {
                     const label patchi =
-                        mesh().boundaryMesh().whichPatch(facei);
+                        mesh().poly().boundary().whichPatch(facei);
                     const label i =
-                        facei - mesh().boundaryMesh()[patchi].start();
+                        facei - mesh().poly().boundary()[patchi].start();
 
                     const fvsPatchVectorField& patchUfU =
                         UfU.boundaryField()[patchi];
@@ -967,7 +967,7 @@ void Foam::fvMeshTopoChangers::myrefiner::unrefineUfs
 
         if (Uname != word::null)
         {
-            surfaceVectorField::Boundary& UfBf = Uf.boundaryFieldRef();
+            surfaceVectorField::BoundaryField& UfBf = Uf.boundaryFieldRef();
 
             const surfaceVectorField UfU
             (
@@ -993,9 +993,9 @@ void Foam::fvMeshTopoChangers::myrefiner::unrefineUfs
                         else
                         {
                             const label patchi =
-                                mesh().boundaryMesh().whichPatch(facei);
+                                mesh().poly().boundary().whichPatch(facei);
                             const label i =
-                                facei - mesh().boundaryMesh()[patchi].start();
+                                facei - mesh().poly().boundary()[patchi].start();
 
                             UfBf[patchi][i] = UfU.boundaryField()[patchi][i];
                         }
@@ -1015,7 +1015,7 @@ const Foam::cellZone& Foam::fvMeshTopoChangers::myrefiner::findCellZone
     const label cellZoneID = mesh().cellZones().findIndex(cellZoneName);
 
     bool cellZoneFound = (cellZoneID != -1);
-    reduce(cellZoneFound, orOp<bool>());
+    reduce(cellZoneFound, orOp());
 
     if (!cellZoneFound)
     {
@@ -1247,16 +1247,16 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
 
     // Count current selection
     const label nLocalCandidates = count(candidateCells, 1);
-    const label nCandidates = returnReduce(nLocalCandidates, sumOp<label>());
+    const label nCandidates = returnReduce(nLocalCandidates, sumOp());
     const label nLocalUnrefineable = count(unrefineableCells, 1);
-    const label nUnrefineable = returnReduce(nLocalUnrefineable, sumOp<label>());
+    const label nUnrefineable = returnReduce(nLocalUnrefineable, sumOp());
 
     if (debug)
     {
         const label nProtected = returnReduce
         (
             count(protectedCells_, 1),
-            sumOp<label>()
+            sumOp()
         );
 
         Info<< "Protected refinement cells:"
@@ -1375,7 +1375,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
                 ListListOps::combine<scalarList>
                 (
                     gatheredTopErrors,
-                    accessOp<scalarList>()
+                    accessOp()
                 )
             );
             const labelList topGlobalCells
@@ -1383,7 +1383,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
                 ListListOps::combine<labelList>
                 (
                     gatheredTopGlobalCells,
-                    accessOp<labelList>()
+                    accessOp()
                 )
             );
 
@@ -1466,7 +1466,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
             }
         }
 
-        if (returnReduce(hasProtected, orOp<bool>()))
+        if (returnReduce(hasProtected, orOp()))
         {
             consistentSet = meshCutter_.consistentRefinement
             (
@@ -1477,7 +1477,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
     }
 
     // Print out info
-    const label nTotCandidates = returnReduce(candidates.size(), sumOp<label>());
+    const label nTotCandidates = returnReduce(candidates.size(), sumOp());
     if (nTotCandidates == 0)
     {
         Info<< "No cells selected for refinement after protected-cell filtering."
@@ -1486,11 +1486,11 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
         return labelList();
     }
 
-    const label nTot = returnReduce(consistentSet.size(), sumOp<label>());
+    const label nTot = returnReduce(consistentSet.size(), sumOp());
     const scalar upperLimit =
-        returnReduce(upperLimitLocal, maxOp<scalar>());
+        returnReduce(upperLimitLocal, maxOp());
     const scalar lowerLimit =
-        returnReduce(lowerLimitLocal, minOp<scalar>());
+        returnReduce(lowerLimitLocal, minOp());
 
     Info
         << "Selected " << nTot
@@ -1517,7 +1517,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectRefineCells
             << "[" << lowerLimit << " - " << upperLimit << "]" << endl
             << "Refined cells: " << nTot << endl
             << "Refined cells set size: "
-            << returnReduce(refinedCells_->size(), sumOp<label>())
+            << returnReduce(refinedCells_->size(), sumOp())
             << endl;
     }
 
@@ -1567,8 +1567,8 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
     //             if (!mesh().isInternalFace(facei))
     //             {
     //                 const label patchi =
-    //                     mesh().boundaryMesh().whichPatch(facei);
-    //                 const polyPatch& patch = mesh().boundaryMesh()[patchi];
+    //                     mesh().poly().boundary().whichPatch(facei);
+    //                 const polyPatch& patch = mesh().poly().boundary()[patchi];
     //                 if (isA<processorPolyPatch>(patch))
     //                 {
     //                     processorPatchPoints.append(pointi);
@@ -1610,8 +1610,8 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
         //         if (!mesh().isInternalFace(facei))
         //         {
         //             const label patchi =
-        //                 mesh().boundaryMesh().whichPatch(facei);
-        //             const polyPatch& patch = mesh().boundaryMesh()[patchi];
+        //                 mesh().poly().boundary().whichPatch(facei);
+        //             const polyPatch& patch = mesh().poly().boundary()[patchi];
         //             if (isA<processorPolyPatch>(patch))
         //             {
         //                 onProcessorPatch = true;
@@ -1660,11 +1660,11 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
     // }
 
     // const label nEligibleBefore =
-    //     returnReduce(nLocalEligibleBefore, sumOp<label>());
+    //     returnReduce(nLocalEligibleBefore, sumOp());
 
     // Maybe syncing is overkill here, but safer
-    syncTools::syncPointList(mesh(), pointHasMarked, orEqOp<bool>(), hasMarked);
-    syncTools::syncPointList(mesh(), pointAboveLevel, orEqOp<bool>(), aboveLevel);
+    syncTools::syncPointList(mesh(), pointHasMarked, orEqOp(), hasMarked);
+    syncTools::syncPointList(mesh(), pointAboveLevel, orEqOp(), aboveLevel);
 
     label nBlockedMarked = 0;
     label nBlockedAboveLevel = 0;
@@ -1703,7 +1703,7 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
     //     << "Unrefine split points before sync (local/global): "
     //     << nLocalEligibleBefore << " / " << nEligibleBefore
     //     << ", after sync: "
-    //     << returnReduce(newSplitPoints.size(), sumOp<label>())
+    //     << returnReduce(newSplitPoints.size(), sumOp())
     //     << endl;
 
     // Guarantee 2:1 refinement after unrefinement
@@ -1716,25 +1716,25 @@ Foam::labelList Foam::fvMeshTopoChangers::myrefiner::selectUnrefinePoints
         )
     );
 
-    Info<< "Selected " << returnReduce(consistentSet.size(), sumOp<label>())
+    Info<< "Selected " << returnReduce(consistentSet.size(), sumOp())
         << " split points out of a possible "
-        << returnReduce(splitPoints.size(), sumOp<label>())
+        << returnReduce(splitPoints.size(), sumOp())
         << "." << endl;
 
     if (debug)
     {
         const label nCandidatesGlobal =
-            returnReduce(nCandidates, sumOp<label>());
+            returnReduce(nCandidates, sumOp());
         const label nSelectedGlobal =
-            returnReduce(consistentSet.size(), sumOp<label>());
+            returnReduce(consistentSet.size(), sumOp());
 
         Info<< "Unrefine split point filter:"
             << " blockedByMarked="
-            << returnReduce(nBlockedMarked, sumOp<label>())
+            << returnReduce(nBlockedMarked, sumOp())
             << ", blockedByField="
-            << returnReduce(nBlockedAboveLevel, sumOp<label>())
+            << returnReduce(nBlockedAboveLevel, sumOp())
             << ", blockedByBoth="
-            << returnReduce(nBlockedBoth, sumOp<label>())
+            << returnReduce(nBlockedBoth, sumOp())
             << ", beforeConsistency=" << nCandidatesGlobal
             << ", rejectedByConsistency="
             << nCandidatesGlobal - nSelectedGlobal
@@ -1766,7 +1766,7 @@ void Foam::fvMeshTopoChangers::myrefiner::extendMarkedCells
         }
     }
 
-    syncTools::syncFaceList(mesh(), markedFace, orEqOp<bool>());
+    syncTools::syncFaceList(mesh(), markedFace, orEqOp());
 
     // Update cells using any markedFace
     for (label facei = 0; facei < mesh().nInternalFaces(); facei++)
@@ -2005,8 +2005,8 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
             );
         }
 
-        // Don't get it .. Shouldn't be necessary anymore but nBufferLayers_
-        // should be passed to meshCutter_.consistentRefinement
+        // maybe more usefull if nBufferLayers_ is being passed
+        // to meshCutter_.consistentRefinement ...
         // Extend with a buffer layer to prevent neighbouring points
         // being unrefined.
         for (label i = 0; i < nBufferLayers_; i++)
@@ -2037,7 +2037,7 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
                 reachedMaxRefinement = returnReduce
                 (
                     reachedMaxRefinement,
-                    sumOp<label>()
+                    sumOp()
                 );
                 setInfo("nAtMaxRefinement", reachedMaxRefinement);
             }
@@ -2060,7 +2060,7 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
             );
 
             const label nCellsToRefineLocal = cellsToRefine.size();
-            if (returnReduce(nCellsToRefineLocal, sumOp<label>()) > 0)
+            if (returnReduce(nCellsToRefineLocal, sumOp()) > 0)
             {
                 // Refine/update mesh and map fields
                 autoPtr<polyTopoChangeMap> map = refine(cellsToRefine);
@@ -2123,7 +2123,7 @@ bool Foam::fvMeshTopoChangers::myrefiner::update()
             const label nSplitPoints = returnReduce
             (
                 pointsToUnrefine.size(),
-                sumOp<label>()
+                sumOp()
             );
 
             if (nSplitPoints > 0)

@@ -24,6 +24,7 @@ License
 \*---------------------------------------------------------------------------*/
 #include "surfaceFields.H"
 #include "volFields.H"
+#include "uniformDimensionedFields.H"
 
 // * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
 
@@ -43,7 +44,7 @@ inline void Foam::fvMeshTopoChangers::myrefiner::setInfo
     }
     else
     {
-        mesh().thisDb().store
+        mesh().store
         (
             new uniformDimensionedScalarField
             (
@@ -51,7 +52,7 @@ inline void Foam::fvMeshTopoChangers::myrefiner::setInfo
                 (
                     name,
                     mesh().time().time().name(),
-                    mesh().thisDb(),
+                    mesh(),
                     IOobject::NO_READ,
                     IOobject::NO_WRITE
                 ),
@@ -109,7 +110,7 @@ inline void Foam::fvMeshTopoChangers::myrefiner::setDumpList
             (
                 name,
                 mesh().time().name(),
-                mesh().thisDb(),
+                mesh(),
                 IOobject::NO_READ,
                 IOobject::NO_WRITE
             ),
